@@ -214,6 +214,7 @@ dialog h3{margin:0 0 6px;font-size:15px}
   display:flex;justify-content:space-between;gap:12px;padding:0 28px 28px;
   max-width:1240px;margin:0 auto;font-size:11.5px;color:var(--ink-3);
 }
+.foot .build{color:#b9b0a2;font-variant-numeric:tabular-nums}
 .foot a{color:var(--ink-3)}
 .foot a:hover{color:var(--accent)}
 
