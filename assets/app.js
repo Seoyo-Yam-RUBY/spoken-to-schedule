@@ -32,6 +32,7 @@
   }
 
   /* ============ 状态 ============ */
+  const BUILD = '2026-11-10d';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -124,6 +125,20 @@
     return { h: h % 24, mi, matched: m[0] };
   }
 
+  function matchRange(text) {
+    const m = text.match(/(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)?\s*(\d{1,2}|[一两二三四五六七八九十]{1,3})\s*[点时](?:\s*(\d{1,2})\s*分)?\s*(?:到|至|~|-|—)\s*(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里)?\s*(\d{1,2}|[一两二三四五六七八九十]{1,3})\s*[点时]\s*钟?/);
+    if (!m) return null;
+    let h1 = cn2num(m[2]);
+    let h2 = cn2num(m[5]);
+    if (isNaN(h1) || isNaN(h2)) return null;
+    const p1 = m[1] || m[4] || '';
+    const p2 = m[4] || m[1] || '';
+    if (/下午|傍晚|晚上|夜里/.test(p1) && h1 < 12) h1 += 12;
+    if (/下午|傍晚|晚上|夜里/.test(p2) && h2 < 12) h2 += 12;
+    if (h2 <= h1) h2 += 12;
+    return { h: h1 % 24, mi: m[3] ? +m[3] : 0, minutes: (h2 - h1) * 60, matched: m[0] };
+  }
+
   function matchDuration(text) {
     let m = text.match(/(\d+(?:\.\d+)?|[一两二三四五六七八九十]+|半)\s*个?\s*(?:小时|钟头)/);
     if (m) {
@@ -173,8 +188,18 @@
     const kind = /之前|前要|前把|截止|deadline|最晚|ddl/i.test(text) ? 'deadline' : 'event';
 
     const d = matchDate(rest, base); take(d);
-    const t = matchTime(rest); take(t);
-    const du = matchDuration(rest); take(du);
+
+    let t = null;
+    let du = null;
+    const rg = matchRange(rest);
+    if (rg) {
+      t = { h: rg.h, mi: rg.mi };
+      du = { min: rg.minutes, matched: rg.matched };
+      take(rg);
+    } else {
+      t = matchTime(rest); take(t);
+      du = matchDuration(rest); take(du);
+    }
     const pp = matchPeople(rest); take(pp);
     const pl = matchPlace(rest); take(pl);
 
@@ -214,14 +239,21 @@
 
   /* ============ 大模型抽取 ============ */
   const EXTRACT_RULE = `今天是 __TODAY__（__WEEKDAY__），时区 Asia/Shanghai。
-把用户的一段口语整理成日程，只输出 JSON，不要解释。
-规则：
-- date 用 YYYY-MM-DD；相对时间（明天/下周三/月底前）必须基于今天换算；没有明确日期则输出空字符串
-- start 用 24 小时制 HH:mm；没有明确时刻输出空字符串
-- duration_min 是数字，单位分钟；不确定输出 0
-- kind："截止/之前完成"类为 deadline，其余为 event
-- title 用动词短语，不超过 12 个字，不要包含时间和地点
-- 不要编造口语里没有的信息；置信度低于 0.5 时如实降低 confidence`;
+把用户的一段口语整理成日程，只输出 JSON，不要解释，不要 markdown 代码块。
+
+硬性规则：
+1. date 必须是 YYYY-MM-DD。出现「今天/明天/后天/大后天/这周X/下周X/月底/下月N号」时，一律基于今天换算成具体日期，不允许留空。
+2. start 必须是 24 小时制 HH:mm。「下午/傍晚/晚上」一律加 12 小时：下午五点 = 17:00，绝不允许写成 05:00。
+3. 「X 点到 Y 点」表示时间段：start 取 X，duration_min = (Y - X) * 60。
+4. 只有原文完全没提日期时 date 才为空；只有完全没提时刻时 start 才为空。
+5. kind：「截止/之前完成/最晚」类为 deadline，其余为 event。
+6. title 用动词短语，不超过 12 字，不包含时间、地点、人名。
+7. 不编造原文没有的信息。
+
+示例：
+口语：明天下午五点钟有个会
+今天是 __TODAY__，所以明天是 __TOMORROW__，输出：
+{"events":[{"title":"开会","date":"__TOMORROW__","start":"17:00","duration_min":60,"people":[],"place":"","kind":"event","confidence":0.95}]}`;
 
   const GEMINI_SCHEMA = {
     type: 'object',
@@ -250,8 +282,9 @@
   function promptFor(text) {
     const now = new Date();
     return EXTRACT_RULE
-      .replace('__TODAY__', ymd(now))
+      .replace(/__TODAY__/g, ymd(now))
       .replace('__WEEKDAY__', WEEK[now.getDay()])
+      .replace(/__TOMORROW__/g, ymd(addDays(now, 1)))
       + '\n\n口语：' + text;
   }
 
@@ -447,6 +480,7 @@
     if (ev.people && ev.people.length) meta.push(`<i>👤 ${esc(ev.people.join('、'))}</i>`);
     if (ev.place) meta.push(`<i>📍 ${esc(ev.place)}</i>`);
     if (ev.kind === 'deadline') meta.push('<i>⏳ 截止型</i>');
+    meta.push(`<i>${ev.engine === 'ai' ? '模型抽取' : '规则抽取'}</i>`);
     if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
 
     const badges = [];
@@ -984,6 +1018,9 @@
   load();
   render();
   if (new URLSearchParams(location.search).get('demo') === '1') loadExamples();
+
+  const buildEl = document.querySelector('.foot .build');
+  if (buildEl) buildEl.textContent = '构建 ' + BUILD;
 
   // 让 README 里的链接能自动填上当前仓库地址
   const gh = document.getElementById('repo-link');
