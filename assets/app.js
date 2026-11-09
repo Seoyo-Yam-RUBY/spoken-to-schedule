@@ -139,20 +139,31 @@
   }
 
   function matchPeople(text) {
-    const m = text.match(/(?:跟|和|与|同)\s*([\u4e00-\u9fa5A-Za-z]{2,6}?)(?=在|对|聊|吃|开|碰|见|谈|一起|一下|[，,。；;\s]|$)/);
-    if (!m) return null;
-    const name = m[1].replace(/^(一下|一个)/, '').trim();
-    if (/^(老王|同事|客户)$/.test(name)) return { people: [name], matched: m[0] };
-    if (name.length < 2) return null;
-    return { people: [name], matched: m[0] };
+    // 句式一：跟 / 和 / 与 / 同 + 人名
+    let m = text.match(/(?:跟|和|与|同)\s*([\u4e00-\u9fa5A-Za-z]{2,6}?)(?=在|对|聊|吃|开|碰|见|谈|一起|一下|[，,。；;\s]|$)/);
+    if (m) {
+      const name = m[1].replace(/^(一下|一个)/, '').trim();
+      if (name.length >= 2) return { people: [name], matched: m[0] };
+    }
+    // 句式二：人名 + 让 / 叫 / 请 / 约 / 喊 / 催 + 我
+    m = text.match(/^\s*([\u4e00-\u9fa5]{2,4}?)(?:让我|叫我|请我|约我|喊我|催我)/);
+    if (!m) m = text.match(/^\s*([\u4e00-\u9fa5]{2,4})(?:让|叫|请|约|喊|催)/);
+    if (m) return { people: [m[1]], matched: m[0] };
+    return null;
   }
 
   function matchPlace(text) {
-    const m = text.match(/在\s*([^，,。；;]{2,20}?)(?=对|聊|吃|开|碰|见|谈|一起|一下|，|,|。|；|;|$)/);
-    if (!m) return null;
-    const place = m[1].trim();
-    if (place.length < 2) return null;
-    return { place, matched: m[0] };
+    let m = text.match(/在\s*([^，,。；;]{2,20}?)(?=对|聊|吃|开|碰|见|谈|一起|一下|，|,|。|；|;|$)/);
+    if (m) {
+      const place = m[1].trim();
+      if (place.length >= 2) return { place, matched: m[0] };
+    }
+    // 句式二：回 + 地点 / 去 + 地点
+    m = text.match(/回(家|老家|公司|学校|宿舍|爸妈家|外公家)/);
+    if (m) return { place: m[1], matched: m[0] };
+    m = text.match(/去\s*([^，,。；;]{2,10}?)(?=吃|见|开|看|买|办|玩|，|,|。|；|;|$)/);
+    if (m) return { place: m[1].trim(), matched: m[0] };
+    return null;
   }
 
   function parseLocal(text, base = new Date()) {
