@@ -691,15 +691,33 @@
   });
 
   /* ---- 录音 → 转写（OpenAI 兼容的 /audio/transcriptions） ---- */
-  function micDeniedHint(e) {
+  async function micPermissionState() {
+    try {
+      const st = await navigator.permissions.query({ name: 'microphone' });
+      return st.state; // granted | denied | prompt
+    } catch (e) {
+      return 'unknown';
+    }
+  }
+
+  function micDeniedHint(e, perm) {
     const name = e && e.name;
+    if (!window.isSecureContext) {
+      return '当前页面不是 HTTPS，浏览器不允许调用麦克风。请用 https:// 开头的地址（或 localhost）';
+    }
+    if (perm === 'denied') {
+      return '这个站点被设成了「阻止麦克风」：点地址栏左侧的图标 → 网站设置 → 麦克风 → 改成「允许」→ 刷新页面。也可以在 chrome://settings/content/microphone 里把这个站点删掉';
+    }
     if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
       return '没检测到麦克风设备';
     }
     if (name === 'NotReadableError') {
       return '麦克风被其他程序占用了（会议软件之类），关掉再试';
     }
-    return '麦克风被拒绝，要两处都放行：① macOS 系统设置 → 隐私与安全性 → 麦克风 → 勾选 Google Chrome（改完必须完全退出 Chrome 再打开）；② 地址栏左侧图标 → 网站设置 → 麦克风 → 允许';
+    if (perm === 'granted') {
+      return '系统已授权，但浏览器仍然打不开麦克风（' + (name || '未知错误') + '）。试试完全退出 Chrome 再打开';
+    }
+    return '麦克风被拒绝（' + (name || '未知错误') + '）：① macOS 系统设置 → 隐私与安全性 → 麦克风 → 勾选 Google Chrome，改完必须 Cmd+Q 完全退出再打开；② 地址栏左侧图标 → 网站设置 → 麦克风 → 允许';
   }
 
   let recorder = null;
@@ -711,8 +729,9 @@
     try {
       recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
+      const perm = await micPermissionState();
       toast('打不开麦克风');
-      setHint(micDeniedHint(e));
+      setHint(micDeniedHint(e, perm));
       return;
     }
 
@@ -819,8 +838,9 @@
       micBtn.disabled = false;
 
       if (!granted) {
+        const perm = await micPermissionState();
         toast('打不开麦克风');
-        setHint(micDeniedHint(lastMicError));
+        setHint(micDeniedHint(lastMicError, perm));
         return;
       }
 
