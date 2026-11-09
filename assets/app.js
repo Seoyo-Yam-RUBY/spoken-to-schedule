@@ -17,6 +17,21 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+  // 清掉零宽字符、全角空格，以及中文之间被插入的空格
+  const ZERO_WIDTH = /[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g;
+  function normalizeInput(t) {
+    let x = String(t || '').replace(ZERO_WIDTH, '');
+    x = x.replace(/[\uff10-\uff19]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+    x = x.replace(/[\u00a0\u3000]/g, ' ');
+    // 反复去掉「中文 + 空格 + 中文」里的空格（正则会跳过重叠匹配）
+    for (let i = 0; i < 5; i++) {
+      const next = x.replace(/([\u4e00-\u9fa5])[ ]+(?=[\u4e00-\u9fa5])/g, '$1');
+      if (next === x) break;
+      x = next;
+    }
+    return x.replace(/\s+/g, ' ').trim();
+  }
+
   const M_NUM = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
   function cn2num(s) {
     if (typeof s === 'number') return s;
@@ -32,7 +47,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-10d';
+  const BUILD = '2026-11-10e';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -181,7 +196,8 @@
     return null;
   }
 
-  function parseLocal(text, base = new Date()) {
+  function parseLocal(rawText, base = new Date()) {
+    const text = normalizeInput(rawText);
     let rest = text;
     const take = (r) => { if (r && r.matched) rest = rest.replace(r.matched, ' '); };
 
@@ -232,7 +248,7 @@
       place: pl ? pl.place : '',
       kind,
       confidence: Math.min(0.96, Math.round(conf * 100) / 100),
-      source: text,
+      source: rawText,
       engine: 'local',
     };
   }
@@ -285,7 +301,7 @@
       .replace(/__TODAY__/g, ymd(now))
       .replace('__WEEKDAY__', WEEK[now.getDay()])
       .replace(/__TOMORROW__/g, ymd(addDays(now, 1)))
-      + '\n\n口语：' + text;
+      + '\n\n口语：' + normalizeInput(text);
   }
 
   function normalize(raw, source) {
