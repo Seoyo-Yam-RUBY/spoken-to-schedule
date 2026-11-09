@@ -5,13 +5,13 @@
 纯静态站点：没有后端、没有构建步骤、没有账号体系。数据只留在你自己的浏览器里。
 
 <p>
-  <a href="https://<USER>.github.io/<REPO>/"><img alt="Live Demo" src="https://img.shields.io/badge/demo-live-b4552d"></a>
+  <a href="https://Seoyo-Yam-RUBY.github.io/spoken-to-schedule/"><img alt="Live Demo" src="https://img.shields.io/badge/demo-live-b4552d"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-2f6f6a"></a>
   <img alt="No build" src="https://img.shields.io/badge/build-none-success">
   <img alt="No backend" src="https://img.shields.io/badge/backend-none-success">
 </p>
 
-👉 **在线体验**：`https://<USER>.github.io/<REPO>/` ｜ **带示例数据**：`https://<USER>.github.io/<REPO>/?demo=1`
+👉 **在线体验**：`https://Seoyo-Yam-RUBY.github.io/spoken-to-schedule/` ｜ **带示例数据**：`https://Seoyo-Yam-RUBY.github.io/spoken-to-schedule/?demo=1`
 
 ![界面截图](assets/screenshot.png)
 
@@ -21,8 +21,8 @@
 
 不想看代码，直接点：
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/<USER>/<REPO>)
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/<USER>/<REPO>)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
 
 两个按钮都是纯静态托管，不需要填任何环境变量，几十秒就能拿到自己的地址。
 
@@ -30,7 +30,7 @@
 
 1. 打开仓库 **Settings → Pages**
 2. **Source** 选 `Deploy from a branch`，分支选 `main`，目录选 `/ (root)`
-3. 保存，等 1 分钟，访问 `https://<USER>.github.io/<REPO>/`
+3. 保存，等 1 分钟，访问 `https://Seoyo-Yam-RUBY.github.io/spoken-to-schedule/`
 
 没有构建步骤，所以也不需要 Actions，push 即生效。
 
