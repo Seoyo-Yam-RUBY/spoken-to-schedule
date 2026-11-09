@@ -654,39 +654,91 @@
   /* ---- 语音 ---- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micBtn = $('#btn-mic');
+  const micHint = $('#mic-hint');
+  const HINT_DEFAULT = micHint ? micHint.textContent : '';
   let recog = null;
+
+  const ERR_TEXT = {
+    'not-allowed': '麦克风权限被拒绝',
+    'service-not-allowed': '浏览器禁用了语音服务',
+    'network': '连不上浏览器自带的语音服务（国内网络常见）',
+    'no-speech': '没听到声音',
+    'audio-capture': '没检测到麦克风',
+    'aborted': '',
+  };
+
+  const setHint = (t) => { if (micHint) micHint.textContent = t || HINT_DEFAULT; };
 
   if (!SR) {
     micBtn.disabled = true;
     micBtn.textContent = '🎙 浏览器不支持';
-    micBtn.title = '建议用 Chrome / Edge，或直接打字';
+    setHint('当前浏览器没有语音接口：用 Chrome / Edge，或直接用系统听写（Mac 连按两下 Fn，Windows 按 Win+H）');
   } else {
-    micBtn.addEventListener('click', () => {
-      if (recog) { recog.stop(); return; }
-      recog = new SR();
-      recog.lang = 'zh-CN';
-      recog.interimResults = true;
-      recog.continuous = false;
+    micBtn.addEventListener('click', async () => {
+      if (recog) { try { recog.stop(); } catch (e) { /* noop */ } return; }
+
+      // 先显式要一次麦克风权限，避免直接 start 时静默失败
+      micBtn.disabled = true;
+      let granted = true;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (e) {
+        granted = false;
+      }
+      micBtn.disabled = false;
+
+      if (!granted) {
+        toast('麦克风权限被拒绝');
+        setHint('点地址栏左侧的图标，把麦克风改成「允许」，再点一次');
+        return;
+      }
 
       const ta = $('#input');
-      const baseText = ta.value ? ta.value + '，' : '';
+      const baseText = ta.value.trim() ? ta.value.trim().replace(/[，,]\s*$/, '') + '，' : '';
+      const r = new SR();
+      recog = r;
+      r.lang = 'zh-CN';
+      r.interimResults = true;
+      r.continuous = false;
+      r.maxAlternatives = 1;
 
-      recog.onresult = (ev) => {
+      let got = false;
+
+      r.onresult = (ev) => {
+        got = true;
         let s = '';
         for (let i = ev.resultIndex; i < ev.results.length; i++) s += ev.results[i][0].transcript;
         ta.value = baseText + s;
       };
-      recog.onerror = () => { toast('没听清，再试一次或直接打字'); };
-      recog.onend = () => {
+
+      r.onerror = (ev) => {
+        const msg = ERR_TEXT[ev.error] ?? ('语音出错：' + ev.error);
+        if (msg) {
+          toast(msg);
+          setHint(msg + '。可以改用系统听写：Mac 连按两下 Fn，Windows 按 Win+H');
+        }
+      };
+
+      r.onend = () => {
         recog = null;
         micBtn.classList.remove('recording');
         micBtn.textContent = '🎙 点一下说话';
+        if (!got) setHint('这次没识别到内容。若提示「连不上语音服务」，用系统听写最稳：Mac 连按两下 Fn，Windows 按 Win+H');
         ta.focus();
       };
 
       micBtn.classList.add('recording');
       micBtn.textContent = '🎙 正在听…点此停止';
-      try { recog.start(); } catch (e) { recog = null; micBtn.classList.remove('recording'); }
+      setHint('正在听，请说话…');
+      try {
+        r.start();
+      } catch (e) {
+        recog = null;
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎙 点一下说话';
+        toast('启动失败：' + e.message);
+      }
     });
   }
 
