@@ -1,0 +1,782 @@
+/* Spoken → Schedule
+ * 纯静态：无框架、无构建、无后端。
+ * 两条抽取通道：本地规则（默认，离线可用） / 大模型（填 Key 后启用）。
+ */
+(() => {
+  'use strict';
+
+  /* ============ 小工具 ============ */
+  const $ = (s, r = document) => r.querySelector(s);
+  const pad = (n) => String(n).padStart(2, '0');
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const addDays = (d, n) => { const x = startOfDay(d); x.setDate(x.getDate() + n); return x; };
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const uid = () => Math.random().toString(36).slice(2, 9);
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const M_NUM = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  function cn2num(s) {
+    if (typeof s === 'number') return s;
+    s = String(s).trim();
+    if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    if (s.includes('十')) {
+      const [a, b] = s.split('十');
+      if (a && !(a in M_NUM)) return NaN;
+      if (b && !(b in M_NUM)) return NaN;
+      return (a ? M_NUM[a] : 1) * 10 + (b ? M_NUM[b] : 0);
+    }
+    return s in M_NUM ? M_NUM[s] : NaN;
+  }
+
+  /* ============ 状态 ============ */
+  const STORE = 's2s.state.v1';
+  const DEFAULT_SETTINGS = { provider: 'local', key: '', model: '', base: '' };
+
+  const state = {
+    fragments: [],   // {id, text, at}
+    events: [],      // 结构化日程
+    settings: { ...DEFAULT_SETTINGS },
+  };
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      state.fragments = Array.isArray(s.fragments) ? s.fragments : [];
+      state.events = Array.isArray(s.events) ? s.events : [];
+      state.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+    } catch (e) { /* 存储坏了就重来 */ }
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({
+        fragments: state.fragments, events: state.events, settings: state.settings,
+      }));
+    } catch (e) { /* 隐私模式下忽略 */ }
+  }
+
+  /* ============ 本地规则抽取 ============ */
+  const WD = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 0, 天: 0 };
+
+  function matchDate(text, base) {
+    let m;
+    if ((m = text.match(/(\d{1,2}|[一两二三四五六七八九十]{1,2})\s*天(?:之)?后/))) {
+      return { date: addDays(base, cn2num(m[1])), matched: m[0] };
+    }
+    if ((m = text.match(/大后天/))) return { date: addDays(base, 3), matched: m[0] };
+    if ((m = text.match(/后天/))) return { date: addDays(base, 2), matched: m[0] };
+    if ((m = text.match(/明天|明日|明早|明晚/))) return { date: addDays(base, 1), matched: m[0] };
+    if ((m = text.match(/今天|今日|今早|今晚/))) return { date: addDays(base, 0), matched: m[0] };
+
+    if ((m = text.match(/周末/))) {
+      const delta = (6 - base.getDay() + 7) % 7;
+      return { date: addDays(base, delta), matched: m[0] };
+    }
+    if ((m = text.match(/(下下|下|这|本)?\s*(?:周|星期|礼拜)\s*([一二三四五六日天])/))) {
+      const target = WD[m[2]];
+      const cur = base.getDay();
+      let delta = (target - cur + 7) % 7;
+      if (m[1] === '下') delta += 7;
+      else if (m[1] === '下下') delta += 14;
+      return { date: addDays(base, delta), matched: m[0] };
+    }
+    if ((m = text.match(/月底|月末/))) {
+      const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+      return { date: startOfDay(d), matched: m[0] };
+    }
+    if ((m = text.match(/月初/))) {
+      return { date: startOfDay(new Date(base.getFullYear(), base.getMonth(), 1)), matched: m[0] };
+    }
+    if ((m = text.match(/(下|本|这个)?\s*个?\s*月\s*(\d{1,2})\s*[号日]/))) {
+      const offset = m[1] === '下' ? 1 : 0;
+      const d = new Date(base.getFullYear(), base.getMonth() + offset, +m[2]);
+      return { date: startOfDay(d), matched: m[0] };
+    }
+    if ((m = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[号日]?/))) {
+      const d = new Date(base.getFullYear(), +m[1] - 1, +m[2]);
+      return { date: startOfDay(d), matched: m[0] };
+    }
+    return null;
+  }
+
+  function matchTime(text) {
+    let m = text.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+    if (m) return { h: +m[1], mi: +m[2], matched: m[0] };
+
+    m = text.match(/(凌晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里)?\s*(\d{1,2}|[一两二三四五六七八九十]{1,3})\s*[点时](?:\s*(半|\d{1,2})\s*分?)?/);
+    if (!m) return null;
+    let h = cn2num(m[2]);
+    let mi = 0;
+    if (m[3] === '半') mi = 30;
+    else if (m[3]) mi = +m[3];
+    if (isNaN(h) || h > 24) return null;
+    const p = m[1] || '';
+    if (/下午|傍晚|晚上|夜里/.test(p) && h < 12) h += 12;
+    if (p === '中午' && h < 11) h += 12;
+    if (/凌晨/.test(p) && h === 12) h = 0;
+    return { h: h % 24, mi, matched: m[0] };
+  }
+
+  function matchDuration(text) {
+    let m = text.match(/(\d+(?:\.\d+)?|[一两二三四五六七八九十]+|半)\s*个?\s*(?:小时|钟头)/);
+    if (m) {
+      const v = m[1] === '半' ? 0.5 : cn2num(m[1]);
+      if (!isNaN(v)) return { min: Math.round(v * 60), matched: m[0] };
+    }
+    m = text.match(/(\d{1,3}|[一两二三四五六七八九十]+)\s*分钟/);
+    if (m) {
+      const v = cn2num(m[1]);
+      if (!isNaN(v)) return { min: v, matched: m[0] };
+    }
+    return null;
+  }
+
+  function matchPeople(text) {
+    const m = text.match(/(?:跟|和|与|同)\s*([\u4e00-\u9fa5A-Za-z]{2,6}?)(?=在|对|聊|吃|开|碰|见|谈|一起|一下|[，,。；;\s]|$)/);
+    if (!m) return null;
+    const name = m[1].replace(/^(一下|一个)/, '').trim();
+    if (/^(老王|同事|客户)$/.test(name)) return { people: [name], matched: m[0] };
+    if (name.length < 2) return null;
+    return { people: [name], matched: m[0] };
+  }
+
+  function matchPlace(text) {
+    const m = text.match(/在\s*([^，,。；;]{2,20}?)(?=对|聊|吃|开|碰|见|谈|一起|一下|，|,|。|；|;|$)/);
+    if (!m) return null;
+    const place = m[1].trim();
+    if (place.length < 2) return null;
+    return { place, matched: m[0] };
+  }
+
+  function parseLocal(text, base = new Date()) {
+    let rest = text;
+    const take = (r) => { if (r && r.matched) rest = rest.replace(r.matched, ' '); };
+
+    const kind = /之前|前要|前把|截止|deadline|最晚|ddl/i.test(text) ? 'deadline' : 'event';
+
+    const d = matchDate(rest, base); take(d);
+    const t = matchTime(rest); take(t);
+    const du = matchDuration(rest); take(du);
+    const pp = matchPeople(rest); take(pp);
+    const pl = matchPlace(rest); take(pl);
+
+    let title = rest
+      .trim()
+      .replace(/(大概|大约|左右|差不多|可能|应该|顺便)/g, ' ')
+      .replace(/[，,。；;、]/g, '|')
+      .split('|')[0]
+      .replace(/^(?:(?:要|记得|帮我|把|然后|还有|另外|对了|麻烦|之前|以前|前|这|本|当|那)\s*)+/g, '')
+      .replace(/\s*(一下|吧|呢|啊|哦|之前|以前)\s*$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (title.length > 16) title = title.slice(0, 16);
+    if (!title) title = kind === 'deadline' ? '待办事项' : '未命名日程';
+
+    let conf = 0.25;
+    if (d) conf += 0.35;
+    if (t) conf += 0.25;
+    if (du) conf += 0.05;
+    if (title !== '未命名日程') conf += 0.1;
+
+    return {
+      id: uid(),
+      title,
+      date: d ? ymd(d.date) : null,
+      start: t ? `${pad(t.h)}:${pad(t.mi)}` : null,
+      duration: du ? du.min : null,
+      people: pp ? pp.people : [],
+      place: pl ? pl.place : '',
+      kind,
+      confidence: Math.min(0.96, Math.round(conf * 100) / 100),
+      source: text,
+      engine: 'local',
+    };
+  }
+
+  /* ============ 大模型抽取 ============ */
+  const EXTRACT_RULE = `今天是 __TODAY__（__WEEKDAY__），时区 Asia/Shanghai。
+把用户的一段口语整理成日程，只输出 JSON，不要解释。
+规则：
+- date 用 YYYY-MM-DD；相对时间（明天/下周三/月底前）必须基于今天换算；没有明确日期则输出空字符串
+- start 用 24 小时制 HH:mm；没有明确时刻输出空字符串
+- duration_min 是数字，单位分钟；不确定输出 0
+- kind："截止/之前完成"类为 deadline，其余为 event
+- title 用动词短语，不超过 12 个字，不要包含时间和地点
+- 不要编造口语里没有的信息；置信度低于 0.5 时如实降低 confidence`;
+
+  const GEMINI_SCHEMA = {
+    type: 'object',
+    properties: {
+      events: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            date: { type: 'string' },
+            start: { type: 'string' },
+            duration_min: { type: 'number' },
+            people: { type: 'array', items: { type: 'string' } },
+            place: { type: 'string' },
+            kind: { type: 'string', enum: ['event', 'deadline'] },
+            confidence: { type: 'number' },
+          },
+          required: ['title', 'date', 'start', 'kind', 'confidence'],
+        },
+      },
+    },
+    required: ['events'],
+  };
+
+  function promptFor(text) {
+    const now = new Date();
+    return EXTRACT_RULE
+      .replace('__TODAY__', ymd(now))
+      .replace('__WEEKDAY__', WEEK[now.getDay()])
+      + '\n\n口语：' + text;
+  }
+
+  function normalize(raw, source) {
+    const e = raw || {};
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(e.date || '') ? e.date : null;
+    const start = /^\d{1,2}:\d{2}$/.test(e.start || '') ? e.start.padStart(5, '0') : null;
+    return {
+      id: uid(),
+      title: (e.title || '未命名日程').toString().slice(0, 30),
+      date,
+      start,
+      duration: Number(e.duration_min) > 0 ? Number(e.duration_min) : null,
+      people: Array.isArray(e.people) ? e.people.filter(Boolean).map(String).slice(0, 3) : [],
+      place: e.place || '',
+      kind: e.kind === 'deadline' ? 'deadline' : 'event',
+      confidence: Math.max(0, Math.min(1, Number(e.confidence) || 0.6)),
+      source,
+      engine: 'ai',
+    };
+  }
+
+  async function parseWithAI(text) {
+    const { provider, key, model, base } = state.settings;
+    if (!key) throw new Error('NO_KEY');
+
+    if (provider === 'gemini') {
+      const m = model || 'gemini-2.5-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptFor(text) }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+            responseSchema: GEMINI_SCHEMA,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const obj = JSON.parse(txt);
+      const first = (obj.events || [])[0];
+      if (!first) throw new Error('EMPTY');
+      return normalize(first, text);
+    }
+
+    // OpenAI 兼容（DeepSeek / Moonshot / 自建网关）
+    const root = (base || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+    const res = await fetch(root + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: JSON.stringify({
+        model: model || 'deepseek-chat',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: '你是一个日程抽取器，只输出 JSON。' },
+          { role: 'user', content: promptFor(text) + '\n\n输出格式：{"events":[{"title":"","date":"","start":"","duration_min":0,"people":[],"place":"","kind":"event","confidence":0.9}]}' },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const txt = data?.choices?.[0]?.message?.content || '';
+    const obj = JSON.parse(txt);
+    const first = (obj.events || [])[0];
+    if (!first) throw new Error('EMPTY');
+    return normalize(first, text);
+  }
+
+  async function extract(text) {
+    if (state.settings.provider === 'local') return parseLocal(text);
+    try {
+      return await parseWithAI(text);
+    } catch (e) {
+      toast(e.message === 'NO_KEY' ? '还没填 API Key，先用本地规则' : '模型抽取失败，已回退本地规则');
+      return parseLocal(text);
+    }
+  }
+
+  /* ============ 冲突与重复 ============ */
+  function minutesOf(ev) {
+    if (!ev.start) return null;
+    const [h, m] = ev.start.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  function analyze() {
+    const flags = new Map(); // id -> {conflict:bool, dup:bool}
+    const get = (id) => {
+      if (!flags.has(id)) flags.set(id, { conflict: false, dup: false });
+      return flags.get(id);
+    };
+    const withDate = state.events.filter((e) => e.date);
+
+    for (let i = 0; i < withDate.length; i++) {
+      for (let j = i + 1; j < withDate.length; j++) {
+        const a = withDate[i], b = withDate[j];
+        if (a.date !== b.date) continue;
+
+        const am = minutesOf(a), bm = minutesOf(b);
+        if (am != null && bm != null) {
+          const alen = a.duration || 60, blen = b.duration || 60;
+          if (am < bm + blen && bm < am + alen) {
+            get(a.id).conflict = true; get(b.id).conflict = true;
+          }
+        }
+
+        const na = a.title.replace(/\s/g, ''), nb = b.title.replace(/\s/g, '');
+        const sameTitle = na === nb || (na.length >= 3 && nb.length >= 3 && (na.includes(nb) || nb.includes(na)));
+        const sameStart = am != null && bm != null && Math.abs(am - bm) <= 30;
+        if (sameTitle && (sameStart || a.people.join() === b.people.join())) {
+          get(a.id).dup = true; get(b.id).dup = true;
+        }
+      }
+    }
+    return flags;
+  }
+
+  /* ============ 渲染 ============ */
+  const timelineEl = $('#timeline');
+  const chipsEl = $('#chips');
+  const statsEl = $('#stats');
+
+  function dayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const today = startOfDay(new Date());
+    const diff = Math.round((d - today) / 86400000);
+    const rel = diff === 0 ? '今天' : diff === 1 ? '明天' : diff === 2 ? '后天' : '';
+    const md = `${d.getMonth() + 1}月${d.getDate()}日`;
+    return { md, wd: WEEK[d.getDay()], rel, diff };
+  }
+
+  function durText(min) {
+    if (!min) return '';
+    if (min % 60 === 0) return `${min / 60} 小时`;
+    if (min > 60) return `${Math.floor(min / 60)} 小时 ${min % 60} 分`;
+    return `${min} 分钟`;
+  }
+
+  function eventHTML(ev, flag) {
+    const cls = ['event'];
+    if (flag && flag.conflict) cls.push('conflict');
+    if (flag && flag.dup) cls.push('dup');
+    if (ev.kind === 'deadline') cls.push('deadline');
+
+    const when = ev.start
+      ? `<b>${esc(ev.start)}</b><span>${ev.duration ? durText(ev.duration) : '约 1 小时'}</span>`
+      : `<b>${ev.kind === 'deadline' ? '截止' : '全天'}</b><span>${ev.kind === 'deadline' ? '当天前完成' : '未定时刻'}</span>`;
+
+    const meta = [];
+    if (ev.people && ev.people.length) meta.push(`<i>👤 ${esc(ev.people.join('、'))}</i>`);
+    if (ev.place) meta.push(`<i>📍 ${esc(ev.place)}</i>`);
+    if (ev.kind === 'deadline') meta.push('<i>⏳ 截止型</i>');
+    if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
+
+    const badges = [];
+    if (flag && flag.conflict) badges.push('<span class="flag red">时间冲突</span>');
+    if (flag && flag.dup) badges.push('<span class="flag yellow">可能重复</span>');
+
+    return `<article class="${cls.join(' ')}" data-id="${ev.id}">
+      <div class="when">${when}</div>
+      <div class="body">
+        <div class="title-row">
+          <span class="title" contenteditable="true" spellcheck="false">${esc(ev.title)}</span>
+          ${badges.join('')}
+        </div>
+        ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}
+        ${ev.source ? `<div class="src">“${esc(ev.source)}”</div>` : ''}
+      </div>
+      <div class="event-actions">
+        <button class="mini" data-act="move">改时间</button>
+        <button class="mini danger" data-act="del">删除</button>
+      </div>
+    </article>`;
+  }
+
+  function render() {
+    const flags = analyze();
+    const events = state.events.slice();
+
+    // 分组
+    const groups = new Map();
+    events.forEach((e) => {
+      const key = e.date || 'tbd';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    });
+
+    const keys = [...groups.keys()].filter((k) => k !== 'tbd')
+      .sort((a, b) => a.localeCompare(b));
+    if (groups.has('tbd')) keys.push('tbd');
+
+    if (!events.length) {
+      timelineEl.innerHTML = `<div class="empty">
+        <strong>还没有日程</strong>
+        在左边说一句话，比如「下周三下午三点跟老王对方案，大概一小时」<br>
+        它会自己落到右边的轴上。
+      </div>`;
+      statsEl.textContent = '';
+    } else {
+      let html = '';
+      keys.forEach((key) => {
+        const list = groups.get(key).slice().sort((a, b) => {
+          const am = minutesOf(a), bm = minutesOf(b);
+          if (am == null && bm == null) return 0;
+          if (am == null) return -1;
+          if (bm == null) return 1;
+          return am - bm;
+        });
+
+        let head;
+        if (key === 'tbd') {
+          head = `<div class="day-head"><span class="day-date">待定</span><span class="day-count">${list.length} 条</span></div>`;
+        } else {
+          const L = dayLabel(key);
+          head = `<div class="day-head">
+            <span class="day-date">${L.md} · ${L.wd}</span>
+            ${L.rel ? `<span class="day-rel">${L.rel}</span>` : ''}
+            <span class="day-count">${list.length} 条</span>
+          </div>`;
+        }
+
+        html += `<section class="day">${head}<div class="events">${
+          list.map((e) => eventHTML(e, flags.get(e.id))).join('')
+        }</div></section>`;
+      });
+      timelineEl.innerHTML = html;
+
+      const days = new Set(events.filter((e) => e.date).map((e) => e.date)).size;
+      const conflicts = [...flags.values()].filter((f) => f.conflict).length / 2;
+      statsEl.textContent = `${events.length} 条日程 · ${days} 天${conflicts ? ` · ${Math.round(conflicts)} 处冲突` : ''}`;
+    }
+
+    chipsEl.innerHTML = state.fragments.map((f, i) => `
+      <div class="chip" data-fid="${f.id}">
+        <span class="idx">${i + 1}</span>
+        <span class="txt">${esc(f.text)}</span>
+        <button class="del" data-act="drop" title="移除">×</button>
+      </div>`).join('');
+
+    $('#engine-label').textContent = state.settings.provider === 'local'
+      ? '本地规则 · 离线'
+      : (state.settings.provider === 'gemini' ? 'Gemini 抽取' : '模型抽取');
+    $('#engine-label').className = 'engine' + (state.settings.provider === 'local' ? '' : ' ai');
+  }
+
+  /* ============ 交互 ============ */
+  function toast(msg) {
+    let el = $('#toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      Object.assign(el.style, {
+        position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
+        background: '#1f1b16', color: '#fbf9f5', padding: '9px 16px', borderRadius: '10px',
+        fontSize: '13px', zIndex: 99, boxShadow: '0 10px 30px rgba(0,0,0,.2)',
+        transition: 'opacity .25s', opacity: '0',
+      });
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 2200);
+  }
+
+  async function addFragment(text) {
+    text = (text || '').trim();
+    if (!text) return;
+    state.fragments.push({ id: uid(), text, at: Date.now() });
+    const ev = await extract(text);
+    state.events.push(ev);
+    save();
+    render();
+  }
+
+  function loadExamples() {
+    const samples = [
+      '下周三下午三点跟老王在3楼会议室对一下方案，大概一小时',
+      '这周五之前把预算表发给财务',
+      '明天上午十点站会，15分钟',
+      '月底前要提交季度复盘，具体哪天还没定',
+      '周四晚上七点跟张老师吃饭',
+      '下个月5号交房租',
+      '后天下午两点半面试候选人，别忘了提前看简历',
+      '这周末把 demo 的视频录了',
+    ];
+    state.fragments = samples.map((t) => ({ id: uid(), text: t, at: Date.now() }));
+    state.events = samples.map((t) => parseLocal(t));
+    save();
+    render();
+  }
+
+  async function reparseAll() {
+    if (!state.fragments.length) return;
+    const texts = state.fragments.map((f) => f.text);
+    state.events = [];
+    for (const t of texts) {
+      // eslint-disable-next-line no-await-in-loop
+      state.events.push(await extract(t));
+    }
+    save();
+    render();
+    toast('已用「' + (state.settings.provider === 'local' ? '本地规则' : '模型') + '」重新整理');
+  }
+
+  /* ---- 时间轴事件 ---- */
+  timelineEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const card = btn.closest('.event');
+    const id = card.dataset.id;
+    const ev = state.events.find((x) => x.id === id);
+    if (!ev) return;
+
+    if (btn.dataset.act === 'del') {
+      state.events = state.events.filter((x) => x.id !== id);
+      save(); render();
+    }
+    if (btn.dataset.act === 'move') {
+      const cur = `${ev.date || ''} ${ev.start || ''}`.trim();
+      const input = prompt('输入新的日期和时间（YYYY-MM-DD HH:mm，可留空表示待定）', cur);
+      if (input == null) return;
+      const m = input.trim().match(/^(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}:\d{2})?$/);
+      if (!m) { toast('格式不对，例：2026-11-12 15:00'); return; }
+      ev.date = m[1] || null;
+      ev.start = m[2] ? m[2].padStart(5, '0') : null;
+      ev.engine = ev.engine; save(); render();
+    }
+  });
+
+  timelineEl.addEventListener('blur', (e) => {
+    if (!e.target.classList.contains('title')) return;
+    const card = e.target.closest('.event');
+    const ev = state.events.find((x) => x.id === card.dataset.id);
+    if (!ev) return;
+    const t = e.target.textContent.replace(/\s+/g, ' ').trim();
+    if (t && t !== ev.title) { ev.title = t; save(); render(); }
+  }, true);
+
+  /* ---- 输入区 ---- */
+  $('#btn-add').addEventListener('click', async () => {
+    const ta = $('#input');
+    const v = ta.value;
+    ta.value = '';
+    await addFragment(v);
+  });
+
+  $('#input').addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      $('#btn-add').click();
+    }
+  });
+
+  chipsEl.addEventListener('click', (e) => {
+    if (e.target.dataset.act !== 'drop') return;
+    const id = e.target.closest('.chip').dataset.fid;
+    const frag = state.fragments.find((f) => f.id === id);
+    state.fragments = state.fragments.filter((f) => f.id !== id);
+    if (frag) state.events = state.events.filter((ev) => ev.source !== frag.text);
+    save(); render();
+  });
+
+  $('#btn-examples').addEventListener('click', loadExamples);
+
+  $('#btn-clear').addEventListener('click', () => {
+    if (!state.events.length && !state.fragments.length) return;
+    state.events = []; state.fragments = [];
+    save(); render();
+  });
+
+  /* ---- 设置 ---- */
+  const dlg = $('#dlg-settings');
+
+  function syncSettingsUI() {
+    const s = state.settings;
+    $('#set-provider').value = s.provider;
+    $('#set-key').value = s.key;
+    $('#set-model').value = s.model || (s.provider === 'gemini' ? 'gemini-2.5-flash' : 'deepseek-chat');
+    $('#set-base').value = s.base;
+    $('#ai-fields').hidden = s.provider === 'local';
+    $('#field-base').hidden = s.provider !== 'openai';
+    $('#set-model').placeholder = s.provider === 'gemini' ? 'gemini-2.5-flash' : 'deepseek-chat';
+  }
+
+  $('#btn-settings').addEventListener('click', () => {
+    syncSettingsUI();
+    dlg.showModal();
+  });
+  $('#btn-cancel').addEventListener('click', () => dlg.close());
+  $('#set-provider').addEventListener('change', () => {
+    const p = $('#set-provider').value;
+    $('#ai-fields').hidden = p === 'local';
+    $('#field-base').hidden = p !== 'openai';
+    $('#set-model').value = p === 'gemini' ? 'gemini-2.5-flash' : (p === 'openai' ? 'deepseek-chat' : '');
+  });
+  $('#btn-save').addEventListener('click', () => {
+    state.settings = {
+      provider: $('#set-provider').value,
+      key: $('#set-key').value.trim(),
+      model: $('#set-model').value.trim(),
+      base: $('#set-base').value.trim(),
+    };
+    save(); render(); dlg.close();
+    toast(state.settings.provider === 'local' ? '已切回本地规则' : '已保存，之后的输入会走模型');
+  });
+
+  /* ---- 语音 ---- */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = $('#btn-mic');
+  let recog = null;
+
+  if (!SR) {
+    micBtn.disabled = true;
+    micBtn.textContent = '🎙 浏览器不支持';
+    micBtn.title = '建议用 Chrome / Edge，或直接打字';
+  } else {
+    micBtn.addEventListener('click', () => {
+      if (recog) { recog.stop(); return; }
+      recog = new SR();
+      recog.lang = 'zh-CN';
+      recog.interimResults = true;
+      recog.continuous = false;
+
+      const ta = $('#input');
+      const baseText = ta.value ? ta.value + '，' : '';
+
+      recog.onresult = (ev) => {
+        let s = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i++) s += ev.results[i][0].transcript;
+        ta.value = baseText + s;
+      };
+      recog.onerror = () => { toast('没听清，再试一次或直接打字'); };
+      recog.onend = () => {
+        recog = null;
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎙 点一下说话';
+        ta.focus();
+      };
+
+      micBtn.classList.add('recording');
+      micBtn.textContent = '🎙 正在听…点此停止';
+      try { recog.start(); } catch (e) { recog = null; micBtn.classList.remove('recording'); }
+    });
+  }
+
+  /* ---- 导出 .ics ---- */
+  function icsEscape(s) {
+    return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  }
+  function icsStamp(d) {
+    return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+  }
+  function icsDateTime(dateStr, timeStr) {
+    return dateStr.replace(/-/g, '') + 'T' + (timeStr || '09:00').replace(':', '') + '00';
+  }
+  function foldLine(line) {
+    // RFC 5545：每行不超过 75 字节，按字节折行
+    const enc = new TextEncoder();
+    if (enc.encode(line).length <= 75) return line;
+    let out = '', cur = '', bytes = 0;
+    for (const ch of line) {
+      const b = enc.encode(ch).length;
+      if (bytes + b > 74) { out += cur + '\r\n '; cur = ch; bytes = b; }
+      else { cur += ch; bytes += b; }
+    }
+    return out + cur;
+  }
+
+  function exportICS() {
+    const events = state.events.filter((e) => e.date);
+    if (!events.length) { toast('还没有带日期的日程'); return; }
+
+    const now = new Date();
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Spoken to Schedule//CN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:Spoken to Schedule',
+    ];
+
+    events.forEach((ev) => {
+      const desc = ev.source ? `来源原话：${ev.source}` : '';
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:${ev.id}@spoken-to-schedule`);
+      lines.push(`DTSTAMP:${icsStamp(now)}`);
+      if (ev.start) {
+        const end = new Date(`${ev.date}T${ev.start}:00`);
+        end.setMinutes(end.getMinutes() + (ev.duration || 60));
+        lines.push(`DTSTART:${icsDateTime(ev.date, ev.start)}`);
+        lines.push(`DTEND:${icsDateTime(ymd(end), `${pad(end.getHours())}:${pad(end.getMinutes())}`)}`);
+      } else {
+        lines.push(`DTSTART;VALUE=DATE:${ev.date.replace(/-/g, '')}`);
+        lines.push(`DTEND;VALUE=DATE:${ydmNext(ev.date)}`);
+      }
+      lines.push(foldLine(`SUMMARY:${icsEscape(ev.title)}`));
+      if (desc) lines.push(foldLine(`DESCRIPTION:${icsEscape(desc)}`));
+      if (ev.place) lines.push(foldLine(`LOCATION:${icsEscape(ev.place)}`));
+      if (ev.kind === 'deadline') lines.push('CATEGORIES:DEADLINE');
+      lines.push('END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `schedule-${ymd(new Date())}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast(`已导出 ${events.length} 条日程`);
+  }
+  function ydmNext(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return ymd(d);
+  }
+
+  $('#btn-export').addEventListener('click', exportICS);
+
+  /* ---- 启动 ---- */
+  load();
+  render();
+  if (new URLSearchParams(location.search).get('demo') === '1') loadExamples();
+
+  // 让 README 里的链接能自动填上当前仓库地址
+  const gh = document.getElementById('repo-link');
+  if (gh && location.hostname.endsWith('github.io')) {
+    const user = location.hostname.split('.')[0];
+    const repo = location.pathname.split('/').filter(Boolean)[0];
+    gh.href = `https://github.com/${user}/${repo}`;
+  }
+})();

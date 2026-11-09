@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spoken → Schedule · 语音碎片自动变成时间轴</title>
+<meta name="description" content="一天里随口说出的碎片语音，自动整理成排好序的日程，可直接导出 .ics 导入系统日历。纯静态，无需后端。">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◷</span>
+    <div>
+      <h1>Spoken → Schedule</h1>
+      <p class="sub">语音碎片 · 自动排序 · 导出日历</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn ghost" id="btn-settings">设置</button>
+    <button class="btn ghost" id="btn-export">导出 .ics</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <section class="panel input-panel">
+    <div class="panel-head">
+      <h2>今天说了什么</h2>
+      <span class="engine" id="engine-label">本地规则</span>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" rows="3" placeholder="例：下周三下午三点跟老王在 3 楼会议室对一下方案，大概一小时"></textarea>
+      <div class="composer-bar">
+        <button class="btn ghost" id="btn-mic" type="button">🎙 点一下说话</button>
+        <button class="btn primary" id="btn-add" type="button">加入</button>
+      </div>
+    </div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="panel-foot">
+      <button class="link" id="btn-examples" type="button">载入示例（8 条）</button>
+      <button class="link" id="btn-clear" type="button">清空</button>
+    </div>
+  </section>
+
+  <section class="panel timeline-panel">
+    <div class="panel-head">
+      <h2>未来日程</h2>
+      <span class="stats" id="stats"></span>
+    </div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span>纯静态 · 无需后端 · 数据只存在你的浏览器里</span>
+  <a href="https://github.com/" id="repo-link" target="_blank" rel="noopener">GitHub</a>
+</footer>
+
+<dialog id="dlg-settings">
+  <form method="dialog" id="form-settings">
+    <h3>抽取引擎</h3>
+    <p class="hint">默认用本地规则，零配置、离线可用。填入 API Key 后可以切换到模型抽取，对模糊表达更准。</p>
+
+    <label class="field">
+      <span>引擎</span>
+      <select id="set-provider">
+        <option value="local">本地规则（免费 / 离线）</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI 兼容接口（DeepSeek 等）</option>
+      </select>
+    </label>
+
+    <div id="ai-fields" hidden>
+      <label class="field">
+        <span>API Key</span>
+        <input id="set-key" type="password" placeholder="只保存在本机 localStorage">
+      </label>
+      <label class="field">
+        <span>模型</span>
+        <input id="set-model" type="text" placeholder="gemini-2.5-flash">
+      </label>
+      <label class="field" id="field-base">
+        <span>Base URL</span>
+        <input id="set-base" type="text" placeholder="https://api.deepseek.com/v1">
+      </label>
+    </div>
+
+    <div class="dialog-actions">
+      <button class="btn ghost" value="cancel" type="button" id="btn-cancel">取消</button>
+      <button class="btn primary" value="save" type="button" id="btn-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
