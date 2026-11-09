@@ -33,7 +33,10 @@
 
   /* ============ 状态 ============ */
   const STORE = 's2s.state.v1';
-  const DEFAULT_SETTINGS = { provider: 'local', key: '', model: '', base: '' };
+  const DEFAULT_SETTINGS = {
+    provider: 'local', key: '', model: '', base: '',
+    asrKey: '', asrBase: 'https://api.siliconflow.cn/v1', asrModel: 'FunAudioLLM/SenseVoiceSmall',
+  };
 
   const state = {
     fragments: [],   // {id, text, at}
@@ -624,6 +627,9 @@
     $('#set-key').value = s.key;
     $('#set-model').value = s.model || (s.provider === 'gemini' ? 'gemini-2.5-flash' : 'deepseek-chat');
     $('#set-base').value = s.base;
+    $('#set-asr-key').value = s.asrKey || '';
+    $('#set-asr-base').value = s.asrBase || 'https://api.siliconflow.cn/v1';
+    $('#set-asr-model').value = s.asrModel || 'FunAudioLLM/SenseVoiceSmall';
     $('#ai-fields').hidden = s.provider === 'local';
     $('#field-base').hidden = s.provider !== 'openai';
     $('#set-model').placeholder = s.provider === 'gemini' ? 'gemini-2.5-flash' : 'deepseek-chat';
@@ -646,10 +652,84 @@
       key: $('#set-key').value.trim(),
       model: $('#set-model').value.trim(),
       base: $('#set-base').value.trim(),
+      asrKey: $('#set-asr-key').value.trim(),
+      asrBase: $('#set-asr-base').value.trim() || 'https://api.siliconflow.cn/v1',
+      asrModel: $('#set-asr-model').value.trim() || 'FunAudioLLM/SenseVoiceSmall',
     };
     save(); render(); dlg.close();
     toast(state.settings.provider === 'local' ? '已切回本地规则' : '已保存，之后的输入会走模型');
   });
+
+  /* ---- 录音 → 转写（OpenAI 兼容的 /audio/transcriptions） ---- */
+  let recorder = null;
+  let recChunks = [];
+  let recStream = null;
+
+  async function startRecording(ta) {
+    const s = state.settings;
+    try {
+      recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      toast('麦克风权限被拒绝');
+      setHint('点地址栏左侧的图标，把麦克风改成「允许」，再点一次');
+      return;
+    }
+
+    const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))
+      ? 'audio/webm;codecs=opus' : '';
+    try {
+      recorder = new MediaRecorder(recStream, mime ? { mimeType: mime } : undefined);
+    } catch (e) {
+      toast('这台设备不支持录音');
+      recStream.getTracks().forEach((t) => t.stop());
+      recStream = null;
+      return;
+    }
+
+    recChunks = [];
+    recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
+    recorder.onstop = async () => {
+      const type = (recorder && recorder.mimeType) || 'audio/webm';
+      const blob = new Blob(recChunks, { type });
+      recorder = null;
+      if (recStream) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; }
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎙 点一下说话';
+      if (!blob.size) { setHint('没录到声音，再说一次'); return; }
+      setHint('正在转写…');
+      await transcribe(blob, ta);
+    };
+
+    recorder.start();
+    micBtn.classList.add('recording');
+    micBtn.textContent = '🎙 录音中…点此结束';
+    setHint('正在录音，说完点一下停止');
+  }
+
+  async function transcribe(blob, ta) {
+    const s = state.settings;
+    const base = (s.asrBase || '').replace(/\/+$/, '');
+    const fd = new FormData();
+    fd.append('file', blob, 'speech.webm');
+    fd.append('model', s.asrModel || 'FunAudioLLM/SenseVoiceSmall');
+    try {
+      const res = await fetch(base + '/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + s.asrKey },
+        body: fd,
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const text = (data.text || '').trim();
+      if (!text) { setHint('没听清，再说一次'); toast('没听清'); return; }
+      ta.value = (ta.value.trim() ? ta.value.trim().replace(/[，,]\s*$/, '') + '，' : '') + text;
+      setHint('已转写到输入框');
+      ta.focus();
+    } catch (e) {
+      setHint('转写失败：' + e.message + '，检查 Key / Base URL');
+      toast('转写失败：' + e.message);
+    }
+  }
 
   /* ---- 语音 ---- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -675,7 +755,14 @@
     setHint('当前浏览器没有语音接口：用 Chrome / Edge，或直接用系统听写（Mac 连按两下 Fn，Windows 按 Win+H）');
   } else {
     micBtn.addEventListener('click', async () => {
+      if (recorder) { try { recorder.stop(); } catch (e) { /* noop */ } return; }
       if (recog) { try { recog.stop(); } catch (e) { /* noop */ } return; }
+
+      // 配了转写 Key 就走「录音 → 上传转写」，否则用浏览器自带识别
+      if (state.settings.asrKey) {
+        startRecording($('#input'));
+        return;
+      }
 
       // 先显式要一次麦克风权限，避免直接 start 时静默失败
       micBtn.disabled = true;

@@ -194,6 +194,8 @@ dialog h3{margin:0 0 6px;font-size:15px}
   border-radius:9px;background:#fcfbf8;color:var(--ink);outline:none;
 }
 .field input:focus,.field select:focus{border-color:#c9bda9;background:#fff}
+.divider{height:1px;background:var(--line);margin:18px 0 16px}
+.sub-h{font-size:13px;margin:0 0 6px;font-weight:600}
 .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
 /* ---------- footer ---------- */

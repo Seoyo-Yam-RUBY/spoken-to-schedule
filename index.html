@@ -93,6 +93,24 @@
       </label>
     </div>
 
+    <div class="divider"></div>
+
+    <h4 class="sub-h">语音转写（可选）</h4>
+    <p class="hint">浏览器自带的语音识别走 Google 服务，国内网络基本连不上。填了下面的 Key，点麦克风就会改成「录音 → 转写」，不再依赖浏览器。</p>
+
+    <label class="field">
+      <span>转写 Key</span>
+      <input id="set-asr-key" type="password" placeholder="sk-...">
+    </label>
+    <label class="field">
+      <span>Base URL</span>
+      <input id="set-asr-base" type="text" placeholder="https://api.siliconflow.cn/v1">
+    </label>
+    <label class="field">
+      <span>模型</span>
+      <input id="set-asr-model" type="text" placeholder="FunAudioLLM/SenseVoiceSmall">
+    </label>
+
     <div class="dialog-actions">
       <button class="btn ghost" value="cancel" type="button" id="btn-cancel">取消</button>
       <button class="btn primary" value="save" type="button" id="btn-save">保存</button>
