@@ -166,6 +166,17 @@ textarea::placeholder{color:#b3aa9b}
 .event.conflict{background:var(--warn-bg);border-color:#f0cfc9}
 .event.dup{background:var(--yellow-bg);border-color:#efe0b4}
 .event.deadline{border-style:dashed}
+.time-edit{
+  margin-top:9px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#fbf9f4;
+  display:flex;flex-direction:column;gap:8px;
+}
+.time-edit input{
+  font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);
+  border-radius:7px;background:#fff;color:var(--ink);outline:none;width:100%;
+}
+.time-edit input:focus{border-color:#c9bda9}
+.time-edit-actions{display:flex;gap:6px;flex-wrap:wrap}
+.mini.primary-mini{background:var(--ink);border-color:var(--ink);color:#fbf9f5}
 .flag{
   font-size:10.5px;border-radius:999px;padding:1px 7px;margin-left:6px;
   vertical-align:1px;font-weight:500;

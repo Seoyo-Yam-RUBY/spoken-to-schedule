@@ -325,6 +325,43 @@
     }
   }
 
+  /* ---- 就地改时间 ---- */
+  function openTimeEditor(card, ev) {
+    if (card.querySelector('.time-edit')) return;
+    const value = ev.date ? `${ev.date}T${ev.start || '09:00'}` : '';
+
+    const form = document.createElement('form');
+    form.className = 'time-edit';
+    form.innerHTML = `
+      <input type="datetime-local" value="${value}" aria-label="选择日期和时间">
+      <div class="time-edit-actions">
+        <button class="mini primary-mini" type="submit">确定</button>
+        <button class="mini" type="button" data-act="cancel-time">取消</button>
+        <button class="mini danger" type="button" data-act="clear-time">改成待定</button>
+      </div>`;
+
+    card.querySelector('.body').appendChild(form);
+    const input = form.querySelector('input');
+    input.focus();
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = input.value;
+      if (!v) { ev.date = null; ev.start = null; }
+      else {
+        const [d, t] = v.split('T');
+        ev.date = d;
+        ev.start = t ? t.slice(0, 5) : null;
+      }
+      save(); render();
+    });
+    form.querySelector('[data-act="cancel-time"]').addEventListener('click', () => form.remove());
+    form.querySelector('[data-act="clear-time"]').addEventListener('click', () => {
+      ev.date = null; ev.start = null;
+      save(); render();
+    });
+  }
+
   /* ============ 冲突与重复 ============ */
   function minutesOf(ev) {
     if (!ev.start) return null;
@@ -566,14 +603,7 @@
       save(); render();
     }
     if (btn.dataset.act === 'move') {
-      const cur = `${ev.date || ''} ${ev.start || ''}`.trim();
-      const input = prompt('输入新的日期和时间（YYYY-MM-DD HH:mm，可留空表示待定）', cur);
-      if (input == null) return;
-      const m = input.trim().match(/^(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}:\d{2})?$/);
-      if (!m) { toast('格式不对，例：2026-11-12 15:00'); return; }
-      ev.date = m[1] || null;
-      ev.start = m[2] ? m[2].padStart(5, '0') : null;
-      ev.engine = ev.engine; save(); render();
+      openTimeEditor(card, ev);
     }
   });
 
@@ -661,6 +691,17 @@
   });
 
   /* ---- 录音 → 转写（OpenAI 兼容的 /audio/transcriptions） ---- */
+  function micDeniedHint(e) {
+    const name = e && e.name;
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return '没检测到麦克风设备';
+    }
+    if (name === 'NotReadableError') {
+      return '麦克风被其他程序占用了（会议软件之类），关掉再试';
+    }
+    return '麦克风被拒绝，要两处都放行：① macOS 系统设置 → 隐私与安全性 → 麦克风 → 勾选 Google Chrome（改完必须完全退出 Chrome 再打开）；② 地址栏左侧图标 → 网站设置 → 麦克风 → 允许';
+  }
+
   let recorder = null;
   let recChunks = [];
   let recStream = null;
@@ -670,8 +711,8 @@
     try {
       recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
-      toast('麦克风权限被拒绝');
-      setHint('点地址栏左侧的图标，把麦克风改成「允许」，再点一次');
+      toast('打不开麦克风');
+      setHint(micDeniedHint(e));
       return;
     }
 
@@ -767,17 +808,19 @@
       // 先显式要一次麦克风权限，避免直接 start 时静默失败
       micBtn.disabled = true;
       let granted = true;
+      let lastMicError = null;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((t) => t.stop());
       } catch (e) {
         granted = false;
+        lastMicError = e;
       }
       micBtn.disabled = false;
 
       if (!granted) {
-        toast('麦克风权限被拒绝');
-        setHint('点地址栏左侧的图标，把麦克风改成「允许」，再点一次');
+        toast('打不开麦克风');
+        setHint(micDeniedHint(lastMicError));
         return;
       }
 
