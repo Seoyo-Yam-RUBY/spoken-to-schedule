@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11h';
+  const BUILD = '2026-11-11i';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -1012,8 +1012,10 @@
 
       r.onresult = (ev) => {
         got = true;
+        // 必须从 0 开始拼：resultIndex 只指向本次新增片段，
+        // 从它开始拼会把前面说过的话覆盖掉（表现为「已识别的内容被删掉」）
         let txt = '';
-        for (let i = ev.resultIndex; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+        for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
         ta.value = tidySpeech(baseText + txt);
       };
 
