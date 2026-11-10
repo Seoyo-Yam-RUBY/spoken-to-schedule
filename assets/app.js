@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11g';
+  const BUILD = '2026-11-11h';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -1179,6 +1179,7 @@
   }
 
   $('#btn-export').addEventListener('click', exportICS);
+  $('#btn-import-help').addEventListener('click', () => $('#dlg-import').showModal());
 
   /* ---- 启动 ---- */
   load();

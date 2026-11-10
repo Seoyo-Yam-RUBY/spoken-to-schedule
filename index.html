@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>Spoken → Schedule · 语音碎片自动变成时间轴</title>
 <meta name="description" content="一天里随口说出的碎片语音，自动整理成排好序的日程，可直接导出 .ics 导入系统日历。纯静态，无需后端。">
-<link rel="stylesheet" href="assets/style.css?v=20261111g">
+<link rel="stylesheet" href="assets/style.css?v=20261111h">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
 </head>
 <body>
@@ -22,6 +22,7 @@
   <div class="top-actions">
     <button class="btn ghost" id="btn-settings">设置</button>
     <button class="btn ghost" id="btn-export">导出 .ics</button>
+    <button class="btn ghost icon" id="btn-import-help" title="导入手机日历的步骤">?</button>
   </div>
 </header>
 
@@ -66,7 +67,7 @@
 
 <footer class="foot">
   <span>纯静态 · 无需后端 · 数据只存在你的浏览器里</span>
-  <span class="build">构建 2026-11-11g</span>
+  <span class="build">构建 2026-11-11h</span>
   <a href="https://github.com/" id="repo-link" target="_blank" rel="noopener">GitHub</a>
 </footer>
 
@@ -113,6 +114,27 @@
     <div class="dialog-actions">
       <button class="btn ghost" type="button" id="edit-cancel">取消</button>
       <button class="btn primary" type="button" id="edit-save">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-import">
+  <form method="dialog">
+    <h3>导入手机日历</h3>
+    <p class="hint">iOS 的文件导入是「添加」语义，不会按 UID 去重。所以请用专用日历承载，重导前整块删掉。</p>
+
+    <ol class="steps">
+      <li><b>建一个专用日历</b><br>日历 App → 底部「日历」→ 添加日历 → 名字填「语音日程」，选个显眼的颜色</li>
+      <li><b>把它设为默认日历</b><br>设置 → 日历 → 默认日历 → 选「语音日程」<br><span class="muted">导入的事件会进默认日历，不改这一步就白建了</span></li>
+      <li><b>导入</b><br>点开下载的 .ics → 添加到日历</li>
+      <li><b>重导前先删掉整个日历</b><br>日历 App → 底部「日历」→ 「语音日程」右边的 ⓘ → 删除日历 → 删除所有事件</li>
+      <li><b>再导入新的 .ics</b><br>无论之前导过几次都不会累积</li>
+    </ol>
+
+    <p class="hint" style="margin-top:14px">macOS 上同理：日历 App → 文件 → 新建日历。</p>
+
+    <div class="dialog-actions">
+      <button class="btn primary" value="close">知道了</button>
     </div>
   </form>
 </dialog>
@@ -171,6 +193,6 @@
   </form>
 </dialog>
 
-<script src="assets/app.js?v=20261111g"></script>
+<script src="assets/app.js?v=20261111h"></script>
 </body>
 </html>
