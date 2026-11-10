@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11f';
+  const BUILD = '2026-11-11g';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -277,6 +277,8 @@
       place: pl ? pl.place : '',
       kind,
       category: detectCategory(text, title),
+      seq: 0,
+      updatedAt: null,
       confidence: Math.min(0.96, Math.round(conf * 100) / 100),
       source: rawText,
       engine: 'local',
@@ -406,6 +408,8 @@
       place: e.place || '',
       kind: e.kind === 'deadline' ? 'deadline' : 'event',
       category: ['interview', 'exam'].includes(e.category) ? e.category : detectCategory(source, e.title),
+      seq: 0,
+      updatedAt: null,
       confidence: Math.max(0, Math.min(1, Number(e.confidence) || 0.6)),
       source,
       engine: 'ai',
@@ -507,6 +511,8 @@
       ev.start = null;
     }
     ev.place = ($('#edit-place').value || '').trim();
+    ev.seq = (ev.seq || 0) + 1;
+    ev.updatedAt = Date.now();
     ev.people = ($('#edit-people').value || '')
       .split(/[，,、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 3);
     ev.kind = $('#edit-kind').value === 'deadline' ? 'deadline' : 'event';
@@ -776,7 +782,12 @@
     const ev = state.events.find((x) => x.id === card.dataset.id);
     if (!ev) return;
     const t = e.target.textContent.replace(/\s+/g, ' ').trim();
-    if (t && t !== ev.title) { ev.title = t; save(); render(); }
+    if (t && t !== ev.title) {
+      ev.title = t;
+      ev.seq = (ev.seq || 0) + 1;
+      ev.updatedAt = Date.now();
+      save(); render();
+    }
   }, true);
 
   /* ---- 输入区 ---- */
@@ -1132,6 +1143,8 @@
       lines.push('BEGIN:VEVENT');
       lines.push(`UID:${ev.id}@spoken-to-schedule`);
       lines.push(`DTSTAMP:${icsStamp(now)}`);
+      lines.push(`LAST-MODIFIED:${icsStamp(ev.updatedAt ? new Date(ev.updatedAt) : now)}`);
+      lines.push(`SEQUENCE:${ev.seq || 0}`);
       if (ev.start) {
         const end = new Date(`${ev.date}T${ev.start}:00`);
         end.setMinutes(end.getMinutes() + (ev.duration || 60));
