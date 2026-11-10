@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11l';
+  const BUILD = '2026-11-11m';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -502,6 +502,23 @@
     </div>`;
   }
 
+  // 解析自检：只判断「值得看一眼」，不判断对错
+  function checkIssues(ev) {
+    const out = [];
+    const today = ymd(new Date());
+    if (ev.date && ev.date < today) out.push('日期早于今天');
+    if (ev.title && /(明天|后天|今天|下周|上午|下午|晚上|中午|点钟|号)/.test(ev.title)) {
+      out.push('标题里还残留时间词');
+    }
+    if (ev.source && /[跟和与]/.test(ev.source) && (!ev.people || !ev.people.length)) {
+      out.push('句子里有「跟/和」，但没抽到人物');
+    }
+    if (ev.duration && ev.duration > 720) out.push('时长超过 12 小时');
+    if (!ev.date && !ev.start) out.push('日期和时刻都没解析出来');
+    if (ev.confidence != null && ev.confidence < 0.5) out.push('置信度偏低');
+    return out;
+  }
+
   /* ---- 编辑日程 ---- */
   let editingId = null;
   const editDlg = $('#dlg-edit');
@@ -626,7 +643,6 @@
     if (ev.people && ev.people.length) meta.push(`<i>👤 ${esc(ev.people.join('、'))}</i>`);
     if (ev.place) meta.push(`<i>📍 ${esc(ev.place)}</i>`);
     if (ev.kind === 'deadline') meta.push('<i class="deadline-tag">⏳ 截止</i>');
-    if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
 
     const badges = [];
     // 时间冲突不再用角标，改为卡片顶部斜纹 + 卡间提示行
@@ -639,6 +655,11 @@
           <span class="title" contenteditable="true" spellcheck="false">${esc(ev.title)}</span>
           ${ev.category === 'interview' ? '<span class="cat-tag">面试</span>' : ''}
           ${ev.category === 'exam' ? '<span class="cat-tag">笔试</span>' : ''}
+          ${(() => {
+            const issues = checkIssues(ev);
+            if (!issues.length) return '';
+            return `<span class="check-badge" data-id="${ev.id}" title="${esc(issues.join('；'))}">待确认</span>`;
+          })()}
           ${badges.join('')}
         </div>
         ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}
@@ -793,6 +814,12 @@
 
   /* ---- 时间轴事件 ---- */
   timelineEl.addEventListener('click', (e) => {
+    const badge = e.target.closest('.check-badge');
+    if (badge) {
+      const ev = state.events.find((x) => x.id === badge.dataset.id);
+      if (ev) toast(checkIssues(ev).join('；'));
+      return;
+    }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const card = btn.closest('.event');
