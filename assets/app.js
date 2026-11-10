@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11e';
+  const BUILD = '2026-11-11f';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -474,42 +474,51 @@
     }
   }
 
-  /* ---- 就地改时间 ---- */
-  function openTimeEditor(card, ev) {
-    if (card.querySelector('.time-edit')) return;
-    const value = ev.date ? `${ev.date}T${ev.start || '09:00'}` : '';
+  /* ---- 编辑日程 ---- */
+  let editingId = null;
+  const editDlg = $('#dlg-edit');
 
-    const form = document.createElement('form');
-    form.className = 'time-edit';
-    form.innerHTML = `
-      <input type="datetime-local" value="${value}" aria-label="选择日期和时间">
-      <div class="time-edit-actions">
-        <button class="mini primary-mini" type="submit">确定</button>
-        <button class="mini" type="button" data-act="cancel-time">取消</button>
-        <button class="mini danger" type="button" data-act="clear-time">改成待定</button>
-      </div>`;
-
-    card.querySelector('.body').appendChild(form);
-    const input = form.querySelector('input');
-    input.focus();
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const v = input.value;
-      if (!v) { ev.date = null; ev.start = null; }
-      else {
-        const [d, t] = v.split('T');
-        ev.date = d;
-        ev.start = t ? t.slice(0, 5) : null;
-      }
-      save(); render();
-    });
-    form.querySelector('[data-act="cancel-time"]').addEventListener('click', () => form.remove());
-    form.querySelector('[data-act="clear-time"]').addEventListener('click', () => {
-      ev.date = null; ev.start = null;
-      save(); render();
-    });
+  function openEditDialog(ev) {
+    editingId = ev.id;
+    $('#edit-title').value = ev.title || '';
+    $('#edit-when').value = ev.date ? `${ev.date}T${ev.start || '09:00'}` : '';
+    $('#edit-place').value = ev.place || '';
+    $('#edit-people').value = (ev.people || []).join('，');
+    $('#edit-cat').value = ev.category || 'other';
+    $('#edit-kind').value = ev.kind === 'deadline' ? 'deadline' : 'event';
+    editDlg.showModal();
+    setTimeout(() => $('#edit-title').focus(), 30);
   }
+
+  $('#edit-cancel').addEventListener('click', () => editDlg.close());
+
+  $('#edit-save').addEventListener('click', () => {
+    const ev = state.events.find((x) => x.id === editingId);
+    if (!ev) { editDlg.close(); return; }
+
+    ev.title = ($('#edit-title').value || '').trim().slice(0, 30) || '未命名日程';
+    const when = $('#edit-when').value;
+    if (when) {
+      const [d, t] = when.split('T');
+      ev.date = d;
+      ev.start = t ? t.slice(0, 5) : null;
+    } else {
+      ev.date = null;
+      ev.start = null;
+    }
+    ev.place = ($('#edit-place').value || '').trim();
+    ev.people = ($('#edit-people').value || '')
+      .split(/[，,、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 3);
+    ev.kind = $('#edit-kind').value === 'deadline' ? 'deadline' : 'event';
+
+    const cat = $('#edit-cat').value;
+    ev.category = cat === 'auto' ? detectCategory(ev.source, ev.title) : cat;
+
+    save();
+    render();
+    editDlg.close();
+    toast('已保存');
+  });
 
   /* ============ 冲突与重复 ============ */
   function minutesOf(ev) {
@@ -606,7 +615,7 @@
         ${ev.source ? `<div class="src">“${esc(ev.source)}”</div>` : ''}
       </div>
       <div class="event-actions">
-        <button class="mini" data-act="move">改时间</button>
+        <button class="mini" data-act="edit">编辑</button>
         <button class="mini danger" data-act="del">删除</button>
       </div>
     </article>`;
@@ -756,8 +765,8 @@
       state.events = state.events.filter((x) => x.id !== id);
       save(); render();
     }
-    if (btn.dataset.act === 'move') {
-      openTimeEditor(card, ev);
+    if (btn.dataset.act === 'edit') {
+      openEditDialog(ev);
     }
   });
 

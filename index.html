@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>Spoken → Schedule · 语音碎片自动变成时间轴</title>
 <meta name="description" content="一天里随口说出的碎片语音，自动整理成排好序的日程，可直接导出 .ics 导入系统日历。纯静态，无需后端。">
-<link rel="stylesheet" href="assets/style.css?v=20261111e">
+<link rel="stylesheet" href="assets/style.css?v=20261111f">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
 </head>
 <body>
@@ -66,9 +66,56 @@
 
 <footer class="foot">
   <span>纯静态 · 无需后端 · 数据只存在你的浏览器里</span>
-  <span class="build">构建 2026-11-11e</span>
+  <span class="build">构建 2026-11-11f</span>
   <a href="https://github.com/" id="repo-link" target="_blank" rel="noopener">GitHub</a>
 </footer>
+
+<dialog id="dlg-edit">
+  <form method="dialog" id="form-edit">
+    <h3>编辑日程</h3>
+    <p class="hint">标题、时间、地点、人物都可以改，改完立刻重排。</p>
+
+    <label class="field">
+      <span>标题</span>
+      <input id="edit-title" type="text" placeholder="例如：面试">
+    </label>
+    <label class="field">
+      <span>日期时间</span>
+      <input id="edit-when" type="datetime-local">
+    </label>
+    <label class="field">
+      <span>地点</span>
+      <input id="edit-place" type="text" placeholder="留空表示未定">
+    </label>
+    <label class="field">
+      <span>人物</span>
+      <input id="edit-people" type="text" placeholder="多个用逗号分隔">
+    </label>
+    <div class="field-row">
+      <label class="field">
+        <span>类别</span>
+        <select id="edit-cat">
+          <option value="auto">自动判断</option>
+          <option value="interview">面试</option>
+          <option value="exam">笔试</option>
+          <option value="other">其他</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>类型</span>
+        <select id="edit-kind">
+          <option value="event">日程</option>
+          <option value="deadline">截止任务</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="dialog-actions">
+      <button class="btn ghost" type="button" id="edit-cancel">取消</button>
+      <button class="btn primary" type="button" id="edit-save">保存</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dlg-settings">
   <form method="dialog" id="form-settings">
@@ -124,6 +171,6 @@
   </form>
 </dialog>
 
-<script src="assets/app.js?v=20261111e"></script>
+<script src="assets/app.js?v=20261111f"></script>
 </body>
 </html>
