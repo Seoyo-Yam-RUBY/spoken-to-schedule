@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11b';
+  const BUILD = '2026-11-11c';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -244,13 +244,17 @@
     const pp = matchPeople(rest); take(pp);
     const pl = matchPlace(rest); take(pl);
 
-    let title = rest
-      .trim()
+    const chunks = rest
+      .replace(/(截止日期|截止时间|截止期|截止|deadline|ddl)/gi, ' ')
       .replace(/(大概|大约|左右|差不多|可能|应该|顺便)/g, ' ')
       .replace(/[，,。；;、]/g, '|')
-      .split('|')[0]
-      .replace(/^(?:(?:要|记得|帮我|把|然后|还有|另外|对了|麻烦|之前|以前|前|这|本|当|那)\s*)+/g, '')
-      .replace(/\s*(一下|吧|呢|啊|哦|之前|以前)\s*$/g, '')
+      .split('|')
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    let title = (chunks[0] || '')
+      .replace(/^(?:(?:要|记得|帮我|把|然后|还有|有一个|有个|一个是|另外|对了|麻烦|之前|以前|前|这|本|当|那)\s*)+/g, '')
+      .replace(/\s*(一下|吧|呢|啊|哦|之前|以前|是)\s*$/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -279,6 +283,61 @@
     };
   }
 
+  function splitClauses(text) {
+    return normalizeInput(text).split(/[，,。；;]+/).map((x) => x.trim()).filter(Boolean);
+  }
+
+  function clauseInfo(clause) {
+    const base = new Date();
+    return {
+      hasDate: !!matchDate(clause, base),
+      hasTime: !!(matchRange(clause) || matchTime(clause)),
+      deadline: /截止|deadline|ddl|最晚/i.test(clause),
+      fresh: /^(还有一个|有个|一个是|另外|还有|然后|其次|对了)/.test(clause),
+    };
+  }
+
+  // 一段话里可能有好几件事：按标点切句，再把「同一件事的补充说明」并回去
+  function parseLocalMany(rawText) {
+    const clauses = splitClauses(rawText);
+    if (clauses.length <= 1) return [parseLocal(rawText)];
+
+    const groups = [];
+    let cur = [];
+    let curHasDate = false;
+    let curHasTime = false;
+    let curDeadline = false;
+
+    const flush = () => {
+      if (cur.length) groups.push(cur.join('，'));
+    };
+
+    for (const c of clauses) {
+      const k = clauseInfo(c);
+      const startNew = !cur.length
+        || k.fresh
+        || (k.deadline && !curDeadline)
+        || (k.hasDate && curHasDate)
+        || (k.hasTime && curHasTime && !k.deadline);
+
+      if (startNew) {
+        flush();
+        cur = [c];
+        curHasDate = k.hasDate;
+        curHasTime = k.hasTime;
+        curDeadline = k.deadline;
+      } else {
+        cur.push(c);
+        curHasDate = curHasDate || k.hasDate;
+        curHasTime = curHasTime || k.hasTime;
+        curDeadline = curDeadline || k.deadline;
+      }
+    }
+    flush();
+
+    return groups.map((g) => parseLocal(g));
+  }
+
   /* ============ 大模型抽取 ============ */
   const EXTRACT_RULE = `今天是 __TODAY__（__WEEKDAY__），时区 Asia/Shanghai。
 把用户的一段口语整理成日程，只输出 JSON，不要解释，不要 markdown 代码块。
@@ -292,6 +351,7 @@
 6. title 用动词短语，不超过 12 字，不包含时间、地点、人名。
 7. 不编造原文没有的信息。
 8. category：提到「面试」为 interview，提到「笔试/机试/测评」为 exam，其余为 other。
+9. 如果一段话包含多件互不相关的事，events 数组里返回多个对象，不要合并成一条。
 
 示例：
 口语：明天下午五点钟有个会
@@ -375,9 +435,9 @@
       const data = await res.json();
       const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const obj = JSON.parse(txt);
-      const first = (obj.events || [])[0];
-      if (!first) throw new Error('EMPTY');
-      return normalize(first, text);
+      const list = (obj.events || []).map((e) => normalize(e, text));
+      if (!list.length) throw new Error('EMPTY');
+      return list;
     }
 
     // OpenAI 兼容（DeepSeek / Moonshot / 自建网关）
@@ -399,18 +459,18 @@
     const data = await res.json();
     const txt = data?.choices?.[0]?.message?.content || '';
     const obj = JSON.parse(txt);
-    const first = (obj.events || [])[0];
-    if (!first) throw new Error('EMPTY');
-    return normalize(first, text);
+    const list = (obj.events || []).map((e) => normalize(e, text));
+    if (!list.length) throw new Error('EMPTY');
+    return list;
   }
 
-  async function extract(text) {
-    if (state.settings.provider === 'local') return parseLocal(text);
+  async function extractAll(text) {
+    if (state.settings.provider === 'local') return parseLocalMany(text);
     try {
       return await parseWithAI(text);
     } catch (e) {
       toast(e.message === 'NO_KEY' ? '还没填 API Key，先用本地规则' : '模型抽取失败，已回退本地规则');
-      return parseLocal(text);
+      return parseLocalMany(text);
     }
   }
 
@@ -526,7 +586,7 @@
     const meta = [];
     if (ev.people && ev.people.length) meta.push(`<i>👤 ${esc(ev.people.join('、'))}</i>`);
     if (ev.place) meta.push(`<i>📍 ${esc(ev.place)}</i>`);
-    if (ev.kind === 'deadline') meta.push('<i>⏳ 截止型</i>');
+    if (ev.kind === 'deadline') meta.push('<i class="deadline-tag">⏳ 截止</i>');
     if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
 
     const badges = [];
@@ -646,8 +706,8 @@
     text = (text || '').trim();
     if (!text) return;
     state.fragments.push({ id: uid(), text, at: Date.now() });
-    const ev = await extract(text);
-    state.events.push(ev);
+    const evs = await extractAll(text);
+    state.events.push(...evs);
     save();
     render();
   }
@@ -676,7 +736,7 @@
     state.events = [];
     for (const t of texts) {
       // eslint-disable-next-line no-await-in-loop
-      state.events.push(await extract(t));
+      state.events.push(...(await extractAll(t)));
     }
     save();
     render();

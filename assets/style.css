@@ -175,7 +175,9 @@ textarea::placeholder{color:#b3aa9b}
 .cat-exam .cat-tag{background:#efe7fa;color:#5f3596}
 .event.conflict{background:var(--warn-bg);border-color:#f0cfc9}
 .event.dup{background:var(--yellow-bg);border-color:#efe0b4}
-.event.deadline{border-style:dashed}
+.event.deadline{border-left:3px solid var(--warn);background:#fdf6f5;border-color:#f0cfc9}
+.event.deadline .when b{color:var(--warn)}
+.deadline-tag{background:#f9e2de!important;color:#a3372a!important;font-weight:600}
 .time-edit{
   margin-top:9px;padding:9px;border:1px solid var(--line);border-radius:9px;background:#fbf9f4;
   display:flex;flex-direction:column;gap:8px;
