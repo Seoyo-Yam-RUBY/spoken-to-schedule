@@ -29,6 +29,25 @@
 
 不想打字？打开带示例数据那个链接，里面已经放好 10 条。
 
+## 部署
+
+想自己也有一份？三步就能跑起来。
+
+### 用 GitHub Pages（现在这个）
+
+1. 打开仓库 **Settings → Pages**
+2. **Source** 选 `Deploy from a branch`，分支选 `main`，目录选 `/ (root)`
+3. 保存，等一分钟
+
+没有构建步骤，所以 push 完就生效。
+
+### 用现成按钮
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
+
+点一下会复制一份到你的账号下、直接部署，几十秒后给你一个新地址。不用填任何配置。
+
 ## 它会做什么
 
 | 你说的话 | 它的反应 |
@@ -110,23 +129,6 @@
 这样无论导过几次都不会累积。**页面右上角的 `?` 按钮里也有这几步。**
 
 > macOS 上同理：日历 App → 文件 → 新建日历。
-
-## 部署
-
-### 用 GitHub Pages（现在这个）
-
-1. 打开仓库 **Settings → Pages**
-2. **Source** 选 `Deploy from a branch`，分支选 `main`，目录选 `/ (root)`
-3. 保存，等一分钟
-
-没有构建步骤，所以 push 完就生效。
-
-### 用现成按钮
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Seoyo-Yam-RUBY/spoken-to-schedule)
-
-点一下会复制一份到你的账号下、直接部署，几十秒后给你一个新地址。不用填任何配置。
 
 ---
 
