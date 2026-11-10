@@ -120,6 +120,11 @@ textarea::placeholder{color:#b3aa9b}
 .panel-foot{display:flex;justify-content:space-between;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
 
 /* ---------- timeline ---------- */
+.legend{display:flex;gap:16px;font-size:11.5px;color:var(--ink-3);margin:-2px 0 12px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:9px;height:9px;border-radius:3px;display:inline-block}
+.sw-interview{background:#2f5fa8}
+.sw-exam{background:#6b3fa0}
 .timeline{display:flex;flex-direction:column;gap:6px}
 .day{position:relative;padding:10px 0 6px 0}
 .day + .day{border-top:1px solid #f0ece3;margin-top:6px;padding-top:16px}
@@ -163,6 +168,11 @@ textarea::placeholder{color:#b3aa9b}
 .mini:hover{border-color:#cfc3ae;color:var(--ink)}
 .mini.danger:hover{border-color:#eab8b2;color:var(--warn)}
 
+.event.cat-interview{border-left:3px solid #2f5fa8}
+.event.cat-exam{border-left:3px solid #6b3fa0}
+.cat-tag{font-size:10.5px;border-radius:999px;padding:1px 7px;font-weight:500;line-height:1.6}
+.cat-interview .cat-tag{background:#e7eefb;color:#2a5496}
+.cat-exam .cat-tag{background:#efe7fa;color:#5f3596}
 .event.conflict{background:var(--warn-bg);border-color:#f0cfc9}
 .event.dup{background:var(--yellow-bg);border-color:#efe0b4}
 .event.deadline{border-style:dashed}

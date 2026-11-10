@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>Spoken → Schedule · 语音碎片自动变成时间轴</title>
 <meta name="description" content="一天里随口说出的碎片语音，自动整理成排好序的日程，可直接导出 .ics 导入系统日历。纯静态，无需后端。">
-<link rel="stylesheet" href="assets/style.css?v=20261110e">
+<link rel="stylesheet" href="assets/style.css?v=20261111a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
 </head>
 <body>
@@ -45,7 +45,7 @@
     <div class="chips" id="chips"></div>
 
     <div class="panel-foot">
-      <button class="link" id="btn-examples" type="button">载入示例（8 条）</button>
+      <button class="link" id="btn-examples" type="button">载入示例</button>
       <button class="link" id="btn-clear" type="button">清空</button>
     </div>
   </section>
@@ -55,6 +55,10 @@
       <h2>未来日程</h2>
       <span class="stats" id="stats"></span>
     </div>
+    <div class="legend">
+      <span><i class="sw sw-interview"></i>面试</span>
+      <span><i class="sw sw-exam"></i>笔试</span>
+    </div>
     <div class="timeline" id="timeline"></div>
   </section>
 
@@ -62,7 +66,7 @@
 
 <footer class="foot">
   <span>纯静态 · 无需后端 · 数据只存在你的浏览器里</span>
-  <span class="build">构建 2026-11-10e</span>
+  <span class="build">构建 2026-11-11a</span>
   <a href="https://github.com/" id="repo-link" target="_blank" rel="noopener">GitHub</a>
 </footer>
 
@@ -120,6 +124,6 @@
   </form>
 </dialog>
 
-<script src="assets/app.js?v=20261110e"></script>
+<script src="assets/app.js?v=20261111a"></script>
 </body>
 </html>

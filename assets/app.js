@@ -17,6 +17,20 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+  // 语音识别结果常见：汉字之间被插入空格，统一收掉
+  function tidySpeech(t) {
+    let x = String(t || '');
+    for (let i = 0; i < 6; i++) {
+      const next = x
+        .replace(/([\u4e00-\u9fa5])[ ]+(?=[\u4e00-\u9fa5])/g, '$1')
+        .replace(/([\u4e00-\u9fa5])[ ]+(?=[0-9])/g, '$1')
+        .replace(/([0-9])[ ]+(?=[\u4e00-\u9fa5])/g, '$1');
+      if (next === x) break;
+      x = next;
+    }
+    return x.replace(/\s{2,}/g, ' ').replace(/\s+([，。；、！？])/g, '$1').trim();
+  }
+
   // 清掉零宽字符、全角空格，以及中文之间被插入的空格
   const ZERO_WIDTH = /[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g;
   function normalizeInput(t) {
@@ -30,6 +44,17 @@
       x = next;
     }
     return x.replace(/\s+/g, ' ').trim();
+  }
+
+  const CAT_RULES = [
+    ['interview', /面试|一面|二面|三面|终面|群面|HR面|复盘会/i],
+    ['exam', /笔试|机试|测评|考试|做题|在线测试/],
+  ];
+
+  function detectCategory(source, title) {
+    const s2 = (source || '') + ' ' + (title || '');
+    for (const [key, re] of CAT_RULES) if (re.test(s2)) return key;
+    return 'other';
   }
 
   const M_NUM = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -47,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-10e';
+  const BUILD = '2026-11-11a';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -247,6 +272,7 @@
       people: pp ? pp.people : [],
       place: pl ? pl.place : '',
       kind,
+      category: detectCategory(text, title),
       confidence: Math.min(0.96, Math.round(conf * 100) / 100),
       source: rawText,
       engine: 'local',
@@ -265,6 +291,7 @@
 5. kind：「截止/之前完成/最晚」类为 deadline，其余为 event。
 6. title 用动词短语，不超过 12 字，不包含时间、地点、人名。
 7. 不编造原文没有的信息。
+8. category：提到「面试」为 interview，提到「笔试/机试/测评」为 exam，其余为 other。
 
 示例：
 口语：明天下午五点钟有个会
@@ -286,6 +313,7 @@
             people: { type: 'array', items: { type: 'string' } },
             place: { type: 'string' },
             kind: { type: 'string', enum: ['event', 'deadline'] },
+            category: { type: 'string', enum: ['interview', 'exam', 'other'] },
             confidence: { type: 'number' },
           },
           required: ['title', 'date', 'start', 'kind', 'confidence'],
@@ -317,6 +345,7 @@
       people: Array.isArray(e.people) ? e.people.filter(Boolean).map(String).slice(0, 3) : [],
       place: e.place || '',
       kind: e.kind === 'deadline' ? 'deadline' : 'event',
+      category: ['interview', 'exam'].includes(e.category) ? e.category : detectCategory(source, e.title),
       confidence: Math.max(0, Math.min(1, Number(e.confidence) || 0.6)),
       source,
       engine: 'ai',
@@ -487,6 +516,8 @@
     if (flag && flag.conflict) cls.push('conflict');
     if (flag && flag.dup) cls.push('dup');
     if (ev.kind === 'deadline') cls.push('deadline');
+    if (ev.category === 'interview') cls.push('cat-interview');
+    if (ev.category === 'exam') cls.push('cat-exam');
 
     const when = ev.start
       ? `<b>${esc(ev.start)}</b><span>${ev.duration ? durText(ev.duration) : '约 1 小时'}</span>`
@@ -496,7 +527,7 @@
     if (ev.people && ev.people.length) meta.push(`<i>👤 ${esc(ev.people.join('、'))}</i>`);
     if (ev.place) meta.push(`<i>📍 ${esc(ev.place)}</i>`);
     if (ev.kind === 'deadline') meta.push('<i>⏳ 截止型</i>');
-    meta.push(`<i>${ev.engine === 'ai' ? '模型抽取' : '规则抽取'}</i>`);
+    if (ev.engine === 'ai') meta.push('<i>模型抽取</i>');
     if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
 
     const badges = [];
@@ -508,6 +539,8 @@
       <div class="body">
         <div class="title-row">
           <span class="title" contenteditable="true" spellcheck="false">${esc(ev.title)}</span>
+          ${ev.category === 'interview' ? '<span class="cat-tag">面试</span>' : ''}
+          ${ev.category === 'exam' ? '<span class="cat-tag">笔试</span>' : ''}
           ${badges.join('')}
         </div>
         ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}
@@ -629,6 +662,7 @@
       '周四晚上七点跟张老师吃饭',
       '下个月5号交房租',
       '后天下午两点半面试候选人，别忘了提前看简历',
+      '周五上午九点笔试监考，两小时',
       '这周末把 demo 的视频录了',
     ];
     state.fragments = samples.map((t) => ({ id: uid(), text: t, at: Date.now() }));
@@ -843,7 +877,7 @@
       const data = await res.json();
       const text = (data.text || '').trim();
       if (!text) { setHint('没听清，再说一次'); toast('没听清'); return; }
-      ta.value = (ta.value.trim() ? ta.value.trim().replace(/[，,]\s*$/, '') + '，' : '') + text;
+      ta.value = tidySpeech((ta.value.trim() ? ta.value.trim().replace(/[，,]\s*$/, '') + '，' : '') + text);
       setHint('已转写到输入框');
       ta.focus();
     } catch (e) {
@@ -920,7 +954,7 @@
         got = true;
         let s = '';
         for (let i = ev.resultIndex; i < ev.results.length; i++) s += ev.results[i][0].transcript;
-        ta.value = baseText + s;
+        ta.value = tidySpeech(baseText + s);
       };
 
       r.onerror = (ev) => {
