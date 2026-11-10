@@ -181,7 +181,20 @@ textarea::placeholder{color:#b3aa9b}
 .cat-exam .cat-tag{background:#d6f1e4;color:#0d5f45}
 /* 截止优先级最高：红条 + 浅红底，即使同时是笔试/面试 */
 .event.deadline{background:#fdf4f2;border-left:4px solid var(--warn);border-color:#f0cfc9}
-.event.conflict{background:var(--warn-bg);border-color:#f0cfc9}
+/* 冲突：不改底色、不改左边条，只在卡片顶部加斜纹警戒带 */
+.event.conflict{border-color:#e8c9c3}
+.event.conflict::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:5px;
+  border-radius:11px 11px 0 0;
+  background:repeating-linear-gradient(45deg,#c0392b 0 6px,#f7e4e1 6px 12px);
+}
+.conflict-note{
+  display:flex;align-items:center;gap:7px;
+  margin:1px 0 3px;font-size:11.5px;line-height:1.5;color:#94382c;
+  background:#fdf0ee;border:1px dashed #e6b3aa;border-radius:9px;
+  padding:6px 11px;
+}
+.conflict-note .ico{font-size:12px;line-height:1}
 .event.dup{background:var(--yellow-bg);border-color:#efe0b4}
 .event.deadline{border-left:3px solid var(--warn);background:#fdf6f5;border-color:#f0cfc9}
 .event.deadline .when b{color:var(--warn)}

@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11i';
+  const BUILD = '2026-11-11j';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -478,6 +478,30 @@
     }
   }
 
+  function minutesOfStart(ev) {
+    if (!ev.start) return null;
+    const [h, m] = ev.start.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  // 两条事件若时间重叠，生成一条卡间提示
+  function conflictNote(a, b) {
+    const am = minutesOfStart(a);
+    const bm = minutesOfStart(b);
+    if (am == null || bm == null) return '';
+    const aEnd = am + (a.duration || 60);
+    const bEnd = bm + (b.duration || 60);
+    const overlap = Math.min(aEnd, bEnd) - Math.max(am, bm);
+    if (overlap <= 0) return '';
+
+    const later = am >= bm ? a : b;
+    const other = later === a ? b : a;
+    return `<div class="conflict-note">
+      <span class="ico">⚠</span>
+      <span>与 ${esc(other.start)} 的「${esc(other.title)}」重叠 ${overlap} 分钟</span>
+    </div>`;
+  }
+
   /* ---- 编辑日程 ---- */
   let editingId = null;
   const editDlg = $('#dlg-edit');
@@ -605,7 +629,7 @@
     if (ev.confidence != null && ev.confidence < 0.6) meta.push('<i>❓ 待确认</i>');
 
     const badges = [];
-    if (flag && flag.conflict) badges.push('<span class="flag red">时间冲突</span>');
+    // 时间冲突不再用角标，改为卡片顶部斜纹 + 卡间提示行
     if (flag && flag.dup) badges.push('<span class="flag yellow">可能重复</span>');
 
     return `<article class="${cls.join(' ')}" data-id="${ev.id}">
@@ -673,9 +697,17 @@
           </div>`;
         }
 
-        html += `<section class="day">${head}<div class="events">${
-          list.map((e) => eventHTML(e, flags.get(e.id))).join('')
-        }</div></section>`;
+        let cards = '';
+        list.forEach((e, i) => {
+          cards += eventHTML(e, flags.get(e.id));
+          const next = list[i + 1];
+          if (next) {
+            const note = conflictNote(e, next);
+            if (note) cards += note;
+          }
+        });
+
+        html += `<section class="day">${head}<div class="events">${cards}</div></section>`;
       });
       timelineEl.innerHTML = html;
 
