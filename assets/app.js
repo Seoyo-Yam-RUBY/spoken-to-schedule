@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11k';
+  const BUILD = '2026-11-11l';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
@@ -769,6 +769,7 @@
       '下个月5号交房租',
       '后天下午两点半面试候选人，别忘了提前看简历',
       '周五上午九点笔试监考，两小时',
+      '周五上午十点面试复盘',
       '这周末把 demo 的视频录了',
     ];
     state.fragments = samples.map((t) => ({ id: uid(), text: t, at: Date.now() }));

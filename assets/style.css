@@ -182,7 +182,7 @@ textarea::placeholder{color:#b3aa9b}
 /* 截止优先级最高：红条 + 浅红底，即使同时是笔试/面试 */
 .event.deadline{background:#fdf4f2;border-left:4px solid var(--warn);border-color:#f0cfc9}
 /* 冲突：不改底色、不改左边条，只在卡片顶部加斜纹警戒带 */
-.event.conflict{border-color:#e8c9c3}
+.event.conflict{border-top-color:#e8c9c3;border-right-color:#e8c9c3;border-bottom-color:#e8c9c3}
 .event.conflict::before{
   content:'';position:absolute;top:0;left:0;right:0;height:5px;
   border-radius:11px 11px 0 0;
