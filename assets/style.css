@@ -173,6 +173,8 @@ textarea::placeholder{color:#b3aa9b}
 .cat-tag{font-size:10.5px;border-radius:999px;padding:1px 7px;font-weight:500;line-height:1.6}
 .cat-interview .cat-tag{background:#e7eefb;color:#2a5496}
 .cat-exam .cat-tag{background:#efe7fa;color:#5f3596}
+.event.deadline.cat-interview,
+.event.deadline.cat-exam{border-left-color:var(--warn)}
 .event.conflict{background:var(--warn-bg);border-color:#f0cfc9}
 .event.dup{background:var(--yellow-bg);border-color:#efe0b4}
 .event.deadline{border-left:3px solid var(--warn);background:#fdf6f5;border-color:#f0cfc9}

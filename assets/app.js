@@ -72,7 +72,7 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11c';
+  const BUILD = '2026-11-11d';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
