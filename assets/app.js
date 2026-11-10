@@ -72,11 +72,11 @@
   }
 
   /* ============ 状态 ============ */
-  const BUILD = '2026-11-11j';
+  const BUILD = '2026-11-11k';
   const STORE = 's2s.state.v1';
   const DEFAULT_SETTINGS = {
     provider: 'local', key: '', model: '', base: '',
-    asrKey: '', asrBase: 'https://api.siliconflow.cn/v1', asrModel: 'FunAudioLLM/SenseVoiceSmall',
+    asrKey: '', asrBase: 'https://api.siliconflow.cn/v1', asrModel: 'FunAudioLLM/SenseVoiceSmall', asrPrompt: '',
   };
 
   const state = {
@@ -866,6 +866,7 @@
     $('#set-asr-key').value = s.asrKey || '';
     $('#set-asr-base').value = s.asrBase || 'https://api.siliconflow.cn/v1';
     $('#set-asr-model').value = s.asrModel || 'FunAudioLLM/SenseVoiceSmall';
+    $('#set-asr-prompt').value = s.asrPrompt || '';
     $('#ai-fields').hidden = s.provider === 'local';
     $('#field-base').hidden = s.provider !== 'openai';
     $('#set-model').placeholder = s.provider === 'gemini' ? 'gemini-2.5-flash' : 'deepseek-chat';
@@ -891,6 +892,7 @@
       asrKey: $('#set-asr-key').value.trim(),
       asrBase: $('#set-asr-base').value.trim() || 'https://api.siliconflow.cn/v1',
       asrModel: $('#set-asr-model').value.trim() || 'FunAudioLLM/SenseVoiceSmall',
+      asrPrompt: $('#set-asr-prompt').value.trim(),
     };
     save(); render(); dlg.close();
     toast(state.settings.provider === 'local' ? '已切回本地规则' : '已保存，之后的输入会走模型');
@@ -933,7 +935,19 @@
   async function startRecording(ta) {
     const s = state.settings;
     try {
-      recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints = {
+        channelCount: 1,
+        sampleRate: 16000,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      try {
+        recStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      } catch (e2) {
+        // 某些设备不接受约束参数，退回默认
+        recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
     } catch (e) {
       const perm = await micPermissionState();
       toast('打不开麦克风');
@@ -959,6 +973,7 @@
       const blob = new Blob(recChunks, { type });
       recorder = null;
       if (recStream) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; }
+      clearInterval(micBtn._timer);
       micBtn.classList.remove('recording');
       micBtn.textContent = '🎙 点一下说话';
       if (!blob.size) { setHint('没录到声音，再说一次'); return; }
@@ -968,22 +983,37 @@
 
     recorder.start();
     micBtn.classList.add('recording');
-    micBtn.textContent = '🎙 录音中…点此结束';
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      const sec = Math.floor((Date.now() - startedAt) / 1000);
+      micBtn.textContent = `🎙 录音中 ${sec}s…点此结束`;
+    }, 500);
+    micBtn._timer = tick;
+    micBtn.textContent = '🎙 录音中 0s…点此结束';
     setHint('正在录音，说完点一下停止');
   }
 
   async function transcribe(blob, ta) {
     const s = state.settings;
     const base = (s.asrBase || '').replace(/\/+$/, '');
-    const fd = new FormData();
-    fd.append('file', blob, 'speech.webm');
-    fd.append('model', s.asrModel || 'FunAudioLLM/SenseVoiceSmall');
-    try {
-      const res = await fetch(base + '/audio/transcriptions', {
+    const post = (withPrompt) => {
+      const fd = new FormData();
+      fd.append('file', blob, 'speech.webm');
+      fd.append('model', s.asrModel || 'FunAudioLLM/SenseVoiceSmall');
+      if (withPrompt && s.asrPrompt) fd.append('prompt', s.asrPrompt);
+      return fetch(base + '/audio/transcriptions', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + s.asrKey },
         body: fd,
       });
+    };
+
+    try {
+      let res = await post(true);
+      // 有些服务不认 prompt 字段，直接 400；去掉热词重试一次
+      if (!res.ok && s.asrPrompt && (res.status === 400 || res.status === 422)) {
+        res = await post(false);
+      }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const text = (data.text || '').trim();
